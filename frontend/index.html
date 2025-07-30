@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kaname - Task Runner</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        /* Custom scrollbar for a more integrated look */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #11111b; /* crust */
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #313244; /* surface0 */
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #45475a; /* surface1 */
+        }
+        /* Style for date input placeholder */
+        input[type="date"]:in-range::-webkit-datetime-edit-year-field,
+        input[type="date"]:in-range::-webkit-datetime-edit-month-field,
+        input[type="date"]:in-range::-webkit-datetime-edit-day-field {
+            color: transparent;
+        }
+    </style>
+    <script>
+        // Extending Tailwind with the Catppuccin Mocha palette
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                    colors: {
+                        'rosewater': '#f5e0dc', 'flamingo': '#f2cdcd', 'pink': '#f5c2e7',
+                        'mauve': '#cba6f7', 'red': '#f38ba8', 'maroon': '#eba0ac',
+                        'peach': '#fab387', 'yellow': '#f9e2af', 'green': '#a6e3a1',
+                        'teal': '#94e2d5', 'sky': '#89dceb', 'sapphire': '#74c7ec',
+                        'blue': '#89b4fa', 'lavender': '#b4befe', 'text': '#cdd6f4',
+                        'subtext1': '#bac2de', 'subtext0': '#a6adc8', 'overlay2': '#9399b2',
+                        'overlay1': '#7f849c', 'overlay0': '#6c7086', 'surface2': '#585b70',
+                        'surface1': '#45475a', 'surface0': '#313244', 'base': '#1e1e2e',
+                        'mantle': '#181825', 'crust': '#11111b',
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="h-full bg-crust text-text font-sans antialiased">
+    <!-- Main App Container -->
+    <div id="app" class="flex flex-col h-full">
+        <!-- Top Bar -->
+        <header class="flex items-center justify-between h-20 px-4 lg:px-8 flex-shrink-0 border-b border-mantle">
+            <div class="flex items-center gap-3">
+                <img src="logo.png" alt="Kaname Logo" class="h-8 w-8">
+                <h1 class="text-2xl font-bold text-mauve">Kaname</h1>
+            </div>
+            <div class="relative w-full max-w-xs">
+                <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <i class="fas fa-search text-subtext0"></i>
+                </div>
+                <input type="search" id="search-bar" placeholder="Search tasks..." class="w-full bg-mantle border border-surface0 text-text rounded-lg p-2 pl-10 focus:ring-2 focus:ring-blue focus:border-blue outline-none transition-colors">
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="flex-1 overflow-y-auto p-4 sm:p-6 lg:px-8">
+            <!-- Task Grid -->
+            <div id="task-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6">
+                <!-- Task cards will be injected here -->
+            </div>
+            <div id="no-results" class="hidden text-center py-16">
+                <p class="text-xl text-subtext0">No tasks found matching your search.</p>
+            </div>
+        </main>
+    </div>
+
+    <!-- Modal -->
+    <div id="task-modal" class="fixed inset-0 z-40 hidden items-center justify-center p-2 sm:p-4">
+        <!-- Modal Backdrop -->
+        <div id="modal-backdrop" class="fixed inset-0 bg-crust bg-opacity-75" onclick="closeTaskModal()"></div>
+
+        <!-- Modal Content -->
+        <div id="modal-content" class="bg-mantle rounded-xl shadow-2xl w-full max-w-4xl flex flex-col max-h-[90vh] z-50 transform transition-all opacity-0 -translate-y-4">
+            <!-- Modal Header -->
+            <div class="flex items-center justify-between p-4 sm:p-5 border-b border-surface0 flex-shrink-0">
+                <h2 id="modal-task-name" class="text-xl font-semibold text-text"></h2>
+                <button onclick="closeTaskModal()" class="text-subtext1 hover:text-text transition-colors">
+                    <i class="fas fa-times fa-lg"></i>
+                </button>
+            </div>
+            
+            <!-- Modal Body -->
+            <div class="flex-1 p-4 sm:p-6 overflow-y-auto">
+                <!-- Tabs -->
+                <div class="border-b border-surface0 mb-6">
+                    <nav class="-mb-px flex space-x-6" aria-label="Tabs">
+                        <button onclick="switchTab('launch')" id="tab-launch" class="tab-button border-blue text-blue whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm">
+                            <i class="fas fa-play-circle mr-2"></i>Launch
+                        </button>
+                        <button onclick="switchTab('config')" id="tab-config" class="tab-button border-transparent text-subtext1 hover:text-text hover:border-overlay2 whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm">
+                            <i class="fas fa-file-code mr-2"></i>Config
+                        </button>
+                        <button onclick="switchTab('output')" id="tab-output" class="tab-button border-transparent text-subtext1 hover:text-text hover:border-overlay2 whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm">
+                            <i class="fas fa-terminal mr-2"></i>Output
+                        </button>
+                    </nav>
+                </div>
+
+                <!-- Tab Content -->
+                <div id="tab-content-launch" class="tab-content">
+                    <h3 class="text-lg font-semibold text-text mb-2">Parameters</h3>
+                    <form id="task-parameters-form" class="space-y-4">
+                        <div id="task-parameters"></div>
+                        <div class="mt-8 pt-6 border-t border-surface0">
+                            <button id="run-button" type="submit" class="w-full lg:w-auto bg-green text-crust font-bold py-2 px-6 rounded-lg hover:bg-opacity-90 transition-colors flex items-center justify-center gap-2">
+                                <i class="fas fa-play"></i>
+                                <span>Run Task</span>
+                            </button>
+                        </div>
+                    </form>
+                </div>
+
+                <div id="tab-content-config" class="tab-content hidden">
+                    <div class="bg-base p-4 rounded-lg">
+                        <pre class="text-sm text-subtext1 overflow-x-auto"><code id="task-config-json"></code></pre>
+                    </div>
+                </div>
+
+                <div id="tab-content-output" class="tab-content hidden">
+                     <div class="bg-crust p-4 rounded-lg font-mono text-sm h-80 flex flex-col">
+                        <div id="output-log" class="flex-1 overflow-y-auto pr-2 whitespace-pre-wrap"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- STATE ---
+        let commands = [];
+        let selectedTaskId = null;
+        let isExecuting = false;
+
+        // --- DOM ELEMENTS ---
+        const taskGrid = document.getElementById('task-grid');
+        const noResults = document.getElementById('no-results');
+        const searchBar = document.getElementById('search-bar');
+        const taskModal = document.getElementById('task-modal');
+        const modalContent = document.getElementById('modal-content');
+        const modalTaskName = document.getElementById('modal-task-name');
+        const taskParameters = document.getElementById('task-parameters');
+        const taskConfigJson = document.getElementById('task-config-json');
+        const outputLog = document.getElementById('output-log');
+        const runButton = document.getElementById('run-button');
+        const taskParamsForm = document.getElementById('task-parameters-form');
+
+        // --- FUNCTIONS ---
+
+        /**
+         * Fetches commands from the backend and populates the UI.
+         */
+        async function fetchAndRenderCommands() {
+            try {
+                const response = await fetch('/api/commands');
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                commands = await response.json();
+                renderTaskGrid(commands);
+            } catch (error) {
+                console.error("Failed to fetch commands:", error);
+                taskGrid.innerHTML = `<div class="col-span-full text-center py-16"><p class="text-xl text-red">Error loading tasks. Is the backend running?</p></div>`;
+            }
+        }
+
+        /**
+         * Renders the grid of task cards.
+         * @param {Array} commandsToRender - The array of command objects to display.
+         */
+        function renderTaskGrid(commandsToRender) {
+            if (commandsToRender.length === 0) {
+                taskGrid.innerHTML = '';
+                noResults.classList.remove('hidden');
+                return;
+            }
+            noResults.classList.add('hidden');
+            taskGrid.innerHTML = commandsToRender.map(cmd => `
+                <div id="card-${cmd.id}" onclick="openTaskModal('${cmd.id}')" class="bg-base rounded-xl p-4 sm:p-6 cursor-pointer hover:bg-surface0 transition-all duration-200">
+                    <div class="flex items-start justify-between">
+                        <h3 class="font-semibold text-text text-lg mb-2">${cmd.name}</h3>
+                        <i class="fas ${cmd.icon || 'fa-cog'} text-subtext0 text-2xl"></i>
+                    </div>
+                    <p class="text-subtext0 text-sm h-10">${cmd.description}</p>
+                </div>
+            `).join('');
+        }
+
+        /**
+         * Opens the modal for a specific task.
+         * @param {string} taskId - The ID of the task to open.
+         */
+        function openTaskModal(taskId) {
+            if (isExecuting) return;
+            selectedTaskId = taskId;
+            const command = commands.find(c => c.id === taskId);
+            if (!command) return;
+
+            modalTaskName.textContent = command.name;
+            populateParameters(command);
+            populateConfig(command);
+            outputLog.innerHTML = `<div class="text-overlay0">Output will appear here...</div>`;
+
+            // Reset run button state
+            runButton.disabled = false;
+            runButton.innerHTML = `<i class="fas fa-play"></i><span>Run Task</span>`;
+            runButton.classList.remove('bg-peach', 'cursor-not-allowed');
+            runButton.classList.add('bg-green');
+
+            switchTab('launch');
+
+            taskModal.classList.remove('hidden');
+            taskModal.classList.add('flex');
+            setTimeout(() => {
+                modalContent.classList.remove('opacity-0', '-translate-y-4');
+            }, 10);
+        }
+
+        /**
+         * Closes the task modal.
+         */
+        function closeTaskModal() {
+            if (isExecuting) return;
+            modalContent.classList.add('opacity-0', '-translate-y-4');
+            setTimeout(() => {
+                taskModal.classList.add('hidden');
+                taskModal.classList.remove('flex');
+                selectedTaskId = null;
+            }, 200);
+        }
+
+        /**
+         * Populates the parameter input fields in the modal.
+         * @param {object} command - The command definition object.
+         */
+        function populateParameters(command) {
+            if (command.parameters.length === 0) {
+                taskParameters.innerHTML = '<p class="text-subtext0">This task requires no parameters.</p>';
+                return;
+            }
+            taskParameters.innerHTML = command.parameters.map(p => {
+                let inputHtml = '';
+                const requiredStar = p.required ? '<span class="text-red">*</span>' : '';
+                const defaultValue = p.default !== null ? p.default : '';
+
+                switch (p.type) {
+                    case 'select':
+                        inputHtml = `<select name="${p.name}" id="param-${p.name}" ${p.required ? 'required' : ''} class="w-full bg-surface0 border border-surface1 text-text rounded-lg p-2 focus:ring-2 focus:ring-blue focus:border-blue outline-none">${p.options.map(o => `<option value="${o}" ${o === defaultValue ? 'selected' : ''}>${o}</option>`).join('')}</select>`;
+                        break;
+                    case 'checkbox':
+                        inputHtml = `<div class="flex items-center h-10"><input type="checkbox" name="${p.name}" id="param-${p.name}" ${defaultValue ? 'checked' : ''} class="h-5 w-5 rounded bg-surface0 border-surface1 text-blue focus:ring-blue"></div>`;
+                        break;
+                    case 'date':
+                         const defaultDate = defaultValue || new Date().toISOString().split('T')[0];
+                         inputHtml = `<input type="date" name="${p.name}" id="param-${p.name}" value="${defaultDate}" ${p.required ? 'required' : ''} class="w-full bg-surface0 border border-surface1 text-text rounded-lg p-2 focus:ring-2 focus:ring-blue focus:border-blue outline-none">`;
+                        break;
+                    default: // text
+                        inputHtml = `<input type="text" name="${p.name}" id="param-${p.name}" value="${defaultValue}" ${p.required ? 'required' : ''} class="w-full bg-surface0 border border-surface1 text-text rounded-lg p-2 focus:ring-2 focus:ring-blue focus:border-blue outline-none">`;
+                }
+                return `<div><label for="param-${p.name}" class="block text-sm font-medium text-subtext1 mb-1 mt-1">${p.label} ${requiredStar}</label>${inputHtml}</div>`;
+            }).join('');
+        }
+
+        /**
+         * Populates the config tab with the command's JSON definition.
+         * @param {object} command - The command definition object.
+         */
+        function populateConfig(command) {
+            taskConfigJson.textContent = JSON.stringify(command, null, 2);
+        }
+
+        /**
+         * Switches the active tab in the modal.
+         * @param {string} tabName - The name of the tab to switch to ('launch', 'config', 'output').
+         */
+        function switchTab(tabName) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+            document.querySelectorAll('.tab-button').forEach(el => {
+                el.classList.remove('border-blue', 'text-blue');
+                el.classList.add('border-transparent', 'text-subtext1', 'hover:text-text', 'hover:border-overlay2');
+            });
+            document.getElementById(`tab-content-${tabName}`).classList.remove('hidden');
+            const button = document.getElementById(`tab-${tabName}`);
+            button.classList.add('border-blue', 'text-blue');
+            button.classList.remove('border-transparent', 'text-subtext1', 'hover:text-text', 'hover:border-overlay2');
+        }
+
+        /**
+         * Handles the form submission to run a task.
+         * @param {Event} event - The form submission event.
+         */
+        async function handleRunTask(event) {
+            event.preventDefault();
+            if (isExecuting || !selectedTaskId) return;
+
+            const command = commands.find(c => c.id === selectedTaskId);
+            const params = {};
+            const formData = new FormData(taskParamsForm);
+
+            // Collect parameter values from the form
+            for (const p of command.parameters) {
+                if (p.type === 'checkbox') {
+                    params[p.name] = formData.has(p.name) ? 'true' : 'false';
+                } else {
+                    params[p.name] = formData.get(p.name);
+                }
+            }
+
+            // --- Start Execution ---
+            isExecuting = true;
+            runButton.disabled = true;
+            runButton.innerHTML = `<i class="fas fa-spinner fa-spin"></i><span>Executing...</span>`;
+            runButton.classList.add('bg-peach', 'cursor-not-allowed');
+            runButton.classList.remove('bg-green');
+
+            switchTab('output');
+            outputLog.innerHTML = '';
+
+            try {
+                const response = await fetch('/api/run', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id: selectedTaskId, params: params }),
+                });
+
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`Execution failed: ${response.status} ${errorText}`);
+                }
+
+                // --- Stream Response ---
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    
+                    const chunk = decoder.decode(value, { stream: true });
+                    // Sanitize HTML to prevent XSS from script output
+                    const sanitizedChunk = chunk.replace(/</g, "&lt;").replace(/>/g, "&gt;");
+                    outputLog.innerHTML += sanitizedChunk;
+                    outputLog.scrollTop = outputLog.scrollHeight;
+                }
+
+            } catch (error) {
+                console.error("Error running task:", error);
+                outputLog.innerHTML += `\n<span class="text-red">CLIENT ERROR: ${error.message}</span>`;
+            } finally {
+                // --- End Execution ---
+                isExecuting = false;
+                runButton.disabled = false;
+                runButton.innerHTML = `<i class="fas fa-play"></i><span>Run Again</span>`;
+                runButton.classList.remove('bg-peach', 'cursor-not-allowed');
+                runButton.classList.add('bg-green');
+            }
+        }
+
+        /**
+         * Filters the task grid based on search input.
+         */
+        function handleSearch() {
+            const searchTerm = searchBar.value.toLowerCase().trim();
+            if (!searchTerm) {
+                renderTaskGrid(commands);
+                return;
+            }
+            const filteredCommands = commands.filter(cmd =>
+                cmd.name.toLowerCase().includes(searchTerm) ||
+                cmd.description.toLowerCase().includes(searchTerm)
+            );
+            renderTaskGrid(filteredCommands);
+        }
+
+        // --- INITIALIZATION ---
+        document.addEventListener('DOMContentLoaded', () => {
+            fetchAndRenderCommands();
+            taskParamsForm.addEventListener('submit', handleRunTask);
+            searchBar.addEventListener('input', handleSearch);
+            
+            // Close modal with Escape key
+            window.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape' && selectedTaskId) {
+                    closeTaskModal();
+                }
+            });
+        });
+    </script>
+</body>
+</html>
