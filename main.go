@@ -65,9 +65,9 @@ var (
 )
 
 const (
-	commandsConfigPath = "../scripts-dump/kaname/commands.json"
-	pythonVenvPath     = "../scripts-dump/kaname/venv"
-	coldStartScript    = "../scripts-dump/kaname/cold-start.sh"
+	commandsConfigPath = "/app/scripts/commands.json"
+	pythonVenvPath     = "/app/scripts/venv"
+	coldStartScript    = "/app/scripts/cold-start.sh"
 )
 
 func main() {
