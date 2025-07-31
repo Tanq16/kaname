@@ -30,7 +30,6 @@ type CommandParam struct {
 }
 
 // CommandDefinition defines a script that can be executed.
-// VenvPath is removed as per requirements; a hardcoded path will be used.
 type CommandDefinition struct {
 	ID          string         `json:"id"`
 	Name        string         `json:"name"`
@@ -38,7 +37,7 @@ type CommandDefinition struct {
 	ScriptPath  string         `json:"script_path"`
 	ScriptType  string         `json:"script_type"`
 	Parameters  []CommandParam `json:"parameters"`
-	Icon        string         `json:"icon"` // Added for frontend styling
+	Icon        string         `json:"icon"`
 }
 
 // ExecutionRequest is the structure for a request to run a command.
@@ -47,14 +46,18 @@ type ExecutionRequest struct {
 	Params map[string]string `json:"params"`
 }
 
+// StreamMessage is the structure for streaming output to the frontend.
+type StreamMessage struct {
+	Stream string `json:"stream"` // "stdout", "stderr", or "system"
+	Data   string `json:"data"`
+}
+
 var (
-	// In-memory store for command definitions, loaded from commands.json.
 	commands     map[string]CommandDefinition
 	commandsLock sync.RWMutex
 )
 
 const (
-	// Hardcoded paths as per requirements.
 	commandsConfigPath = "/app/scripts/commands.json"
 	pythonVenvPath     = "/app/scripts/venv"
 	coldStartScript    = "/app/scripts/cold-start.sh"
@@ -63,7 +66,6 @@ const (
 func main() {
 	log.Println("Starting Kaname...")
 
-	// 1. Execute the cold-start script before doing anything else.
 	if _, err := os.Stat(coldStartScript); err == nil {
 		log.Printf("Executing cold-start script at %s...", coldStartScript)
 		cmd := exec.Command("/bin/bash", coldStartScript)
@@ -75,18 +77,14 @@ func main() {
 		log.Println("Cold-start script completed successfully.")
 	}
 
-	// 2. Load command definitions from the JSON file.
 	if err := loadCommands(); err != nil {
 		log.Fatalf("FATAL: Could not load commands from %s: %v", commandsConfigPath, err)
 	}
 
-	// 3. Set up HTTP server and handlers.
 	mux := http.NewServeMux()
-
 	mux.HandleFunc("/api/commands", commandsHandler)
 	mux.HandleFunc("/api/run", runHandler)
 
-	// Serve the embedded frontend assets.
 	frontendFS, err := fs.Sub(embeddedFrontend, "frontend")
 	if err != nil {
 		log.Fatalf("FATAL: Failed to create frontend subtree: %v", err)
@@ -99,7 +97,6 @@ func main() {
 	}
 }
 
-// loadCommands reads and parses the commands.json file into the in-memory store.
 func loadCommands() error {
 	commandsLock.Lock()
 	defer commandsLock.Unlock()
@@ -107,7 +104,6 @@ func loadCommands() error {
 	log.Printf("Loading command definitions from %s", commandsConfigPath)
 	data, err := os.ReadFile(commandsConfigPath)
 	if err != nil {
-		// Create a dummy file if it doesn't exist to allow the app to start.
 		if os.IsNotExist(err) {
 			log.Printf("WARN: %s not found. Creating a dummy file. Please configure it.", commandsConfigPath)
 			dummyCommands := []CommandDefinition{
@@ -121,7 +117,6 @@ func loadCommands() error {
 				},
 			}
 			data, _ = json.MarshalIndent(dummyCommands, "", "  ")
-			// We don't write it back, just use the dummy data for this session.
 		} else {
 			return fmt.Errorf("failed to read commands file: %w", err)
 		}
@@ -140,12 +135,10 @@ func loadCommands() error {
 	return nil
 }
 
-// commandsHandler serves the list of loaded commands as JSON.
 func commandsHandler(w http.ResponseWriter, r *http.Request) {
 	commandsLock.RLock()
 	defer commandsLock.RUnlock()
 
-	// Create a slice from the map to ensure a consistent JSON array.
 	var cmdList []CommandDefinition
 	for _, cmd := range commands {
 		cmdList = append(cmdList, cmd)
@@ -158,21 +151,18 @@ func commandsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// runHandler executes a script and streams its stdout/stderr back to the client.
 func runHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Only POST method is allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	// 1. Decode the request body.
 	var req ExecutionRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
 
-	// 2. Find the command definition.
 	commandsLock.RLock()
 	cmdDef, ok := commands[req.ID]
 	commandsLock.RUnlock()
@@ -181,12 +171,8 @@ func runHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 3. Construct the command arguments.
 	var executable string
 	args := []string{cmdDef.ScriptPath}
-
-	// TODO: process params; generally, this does it.
-	// but need to handle multiple input array, and true/false (frontend sends bool as string)
 	for _, p := range cmdDef.Parameters {
 		if val, ok := req.Params[p.Name]; ok {
 			if p.Type == "list" {
@@ -214,11 +200,9 @@ func runHandler(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("Executing command '%s': %s %v", cmdDef.ID, executable, args)
 
-	// 4. Set up the command execution.
 	cmd := exec.Command(executable, args...)
 	cmd.Env = os.Environ()
 
-	// 5. Pipe stdout and stderr.
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		http.Error(w, "Failed to create stdout pipe", http.StatusInternalServerError)
@@ -230,65 +214,61 @@ func runHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 6. Start the command.
 	if err := cmd.Start(); err != nil {
 		http.Error(w, "Failed to start command", http.StatusInternalServerError)
 		return
 	}
 
-	// 7. Stream the output back to the client.
-	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	w.Header().Set("X-Content-Type-Options", "nosniff") // Important for security
+	w.Header().Set("Content-Type", "application/x-json-stream")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		http.Error(w, "Streaming not supported", http.StatusInternalServerError)
 		return
 	}
 
-	// Use a channel to merge stdout and stderr to prevent garbled output.
-	outputChan := make(chan string)
+	outputChan := make(chan StreamMessage)
 	var wg sync.WaitGroup
 	wg.Add(2)
 
-	// Goroutine to read and stream stdout.
-	go streamPipe(stdout, "STDOUT", outputChan, &wg)
-	// Goroutine to read and stream stderr.
-	go streamPipe(stderr, "STDERR", outputChan, &wg)
+	go streamPipe(stdout, "stdout", outputChan, &wg)
+	go streamPipe(stderr, "stderr", outputChan, &wg)
 
-	// Goroutine to close the channel once both pipes are done.
 	go func() {
 		wg.Wait()
 		close(outputChan)
 	}()
 
-	// Write the initial execution message.
-	fmt.Fprintf(w, "EXEC: Starting command: %s\n", cmdDef.Name)
-	flusher.Flush()
-
-	// Read from the merged channel and write to the HTTP response.
-	for line := range outputChan {
-		fmt.Fprintln(w, line)
+	// Helper to send a JSON message and flush.
+	sendMessage := func(msg StreamMessage) {
+		if err := json.NewEncoder(w).Encode(msg); err != nil {
+			log.Printf("ERROR: Failed to write stream message: %v", err)
+		}
 		flusher.Flush()
 	}
 
-	// 8. Wait for the command to finish and send final status.
+	sendMessage(StreamMessage{Stream: "system", Data: fmt.Sprintf("Starting command: %s", cmdDef.Name)})
+
+	for msg := range outputChan {
+		sendMessage(msg)
+	}
+
 	err = cmd.Wait()
 	if err != nil {
-		fmt.Fprintf(w, "FAIL: Command finished with error: %v\n", err)
+		sendMessage(StreamMessage{Stream: "system", Data: fmt.Sprintf("FAIL: Command finished with error: %v", err)})
 		log.Printf("ERROR: Command '%s' failed: %v", cmdDef.ID, err)
 	} else {
-		fmt.Fprintln(w, "SUCCESS: Command completed successfully.")
+		sendMessage(StreamMessage{Stream: "system", Data: "SUCCESS: Command completed successfully."})
 		log.Printf("INFO: Command '%s' completed successfully.", cmdDef.ID)
 	}
-	flusher.Flush()
 }
 
-// streamPipe reads from an io.Reader (a pipe), prefixes each line,
+// streamPipe reads from an io.Reader, wraps each line in a StreamMessage,
 // and sends it to a channel.
-func streamPipe(pipe io.Reader, prefix string, c chan<- string, wg *sync.WaitGroup) {
+func streamPipe(pipe io.Reader, streamType string, c chan<- StreamMessage, wg *sync.WaitGroup) {
 	defer wg.Done()
 	scanner := bufio.NewScanner(pipe)
 	for scanner.Scan() {
-		c <- fmt.Sprintf("%s: %s", prefix, scanner.Text())
+		c <- StreamMessage{Stream: streamType, Data: scanner.Text()}
 	}
 }

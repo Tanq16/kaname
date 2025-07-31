@@ -31,6 +31,9 @@
         input[type="date"]:in-range::-webkit-datetime-edit-day-field {
             color: transparent;
         }
+        .copy-button .fa-check {
+            transition: opacity 0.3s ease-in-out;
+        }
     </style>
     <script>
         // Extending Tailwind with the Catppuccin Mocha palette
@@ -59,14 +62,12 @@
 <body class="h-full bg-crust text-text font-sans antialiased">
     <!-- Main App Container -->
     <div id="app" class="flex flex-col h-full">
-        <!-- Top Bar - UPDATED FOR MOBILE -->
+        <!-- Top Bar -->
         <header class="flex items-center justify-between h-16 sm:h-20 px-4 sm:px-8 flex-shrink-0 border-b border-mantle gap-4">
-            <!-- Logo and Title -->
             <div class="hidden sm:flex items-center gap-3 flex-shrink-0">
-                <img src="logo.png" alt="Kaname Logo" class="h-16 w-16" onerror="this.style.display='none'">
+                <img src="https://placehold.co/64x64/1e1e2e/cba6f7?text=K" alt="Kaname Logo" class="h-16 w-16 rounded-full" onerror="this.style.display='none'">
                 <h1 class="text-2xl font-bold text-mauve">Kaname</h1>
             </div>
-            <!-- Search Bar -->
             <div class="relative w-full sm:max-w-xs">
                 <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
                     <i class="fas fa-search text-subtext0"></i>
@@ -77,7 +78,6 @@
 
         <!-- Main Content -->
         <main class="flex-1 overflow-y-auto p-4 sm:p-6 lg:px-8">
-            <!-- Task Grid -->
             <div id="task-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6">
                 <!-- Task cards will be injected here -->
             </div>
@@ -89,12 +89,8 @@
 
     <!-- Modal -->
     <div id="task-modal" class="fixed inset-0 z-40 hidden items-center justify-center p-2 sm:p-4">
-        <!-- Modal Backdrop -->
         <div id="modal-backdrop" class="fixed inset-0 bg-crust bg-opacity-75" onclick="closeTaskModal()"></div>
-
-        <!-- Modal Content -->
         <div id="modal-content" class="bg-mantle rounded-xl shadow-2xl w-full max-w-4xl flex flex-col max-h-[90vh] z-50 transform transition-all opacity-0 -translate-y-4">
-            <!-- Modal Header -->
             <div class="flex items-center justify-between p-4 sm:p-5 border-b border-surface0 flex-shrink-0">
                 <h2 id="modal-task-name" class="text-xl font-semibold text-text"></h2>
                 <button onclick="closeTaskModal()" class="text-subtext1 hover:text-text transition-colors">
@@ -102,7 +98,6 @@
                 </button>
             </div>
             
-            <!-- Modal Body -->
             <div class="flex-1 p-4 sm:p-6 overflow-y-auto">
                 <!-- Tabs -->
                 <div class="border-b border-surface0 mb-6">
@@ -115,6 +110,9 @@
                         </button>
                         <button onclick="switchTab('output')" id="tab-output" class="tab-button border-transparent text-subtext1 hover:text-text hover:border-overlay2 whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm">
                             <i class="fas fa-terminal mr-2"></i>Output
+                        </button>
+                        <button onclick="switchTab('errors')" id="tab-errors" class="tab-button border-transparent text-subtext1 hover:text-text hover:border-overlay2 whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm">
+                            <i class="fas fa-exclamation-triangle mr-2"></i>Errors
                         </button>
                     </nav>
                 </div>
@@ -133,17 +131,30 @@
                     </form>
                 </div>
 
-                <!-- Config Tab -->
                 <div id="tab-content-config" class="tab-content hidden">
-                    <div class="bg-base p-4 rounded-lg font-mono text-sm h-[32rem] overflow-auto">
+                    <div class="relative bg-base p-4 rounded-lg font-mono text-sm h-[32rem] overflow-auto">
+                         <button onclick="copyContent('task-config-json')" class="copy-button absolute top-2 right-2 text-subtext1 hover:text-text transition-colors p-1 rounded-md" title="Copy to Clipboard">
+                            <i class="fas fa-copy"></i>
+                        </button>
                         <pre class="text-subtext1"><code id="task-config-json"></code></pre>
                     </div>
                 </div>
 
-                <!-- Output Tab -->
                 <div id="tab-content-output" class="tab-content hidden">
-                     <div class="bg-base p-4 rounded-lg font-mono text-sm h-[32rem] overflow-auto">
+                     <div class="relative bg-base p-4 rounded-lg font-mono text-sm h-[32rem] overflow-auto">
+                        <button onclick="copyContent('output-log')" class="copy-button absolute top-2 right-2 text-subtext1 hover:text-text transition-colors p-1 rounded-md" title="Copy to Clipboard">
+                            <i class="fas fa-copy"></i>
+                        </button>
                         <pre id="output-log" class="whitespace-pre w-full h-full"></pre>
+                    </div>
+                </div>
+
+                <div id="tab-content-errors" class="tab-content hidden">
+                     <div class="relative bg-base p-4 rounded-lg font-mono text-sm h-[32rem] overflow-auto">
+                        <button onclick="copyContent('error-log')" class="copy-button absolute top-2 right-2 text-subtext1 hover:text-text transition-colors p-1 rounded-md" title="Copy to Clipboard">
+                            <i class="fas fa-copy"></i>
+                        </button>
+                        <pre id="error-log" class="whitespace-pre w-full h-full"></pre>
                     </div>
                 </div>
             </div>
@@ -166,20 +177,16 @@
         const taskParameters = document.getElementById('task-parameters');
         const taskConfigJson = document.getElementById('task-config-json');
         const outputLog = document.getElementById('output-log');
+        const errorLog = document.getElementById('error-log');
         const runButton = document.getElementById('run-button');
         const taskParamsForm = document.getElementById('task-parameters-form');
 
         // FUNCTIONS
 
-        /**
-         * Fetches commands from the backend and populates the UI.
-         */
         async function fetchAndRenderCommands() {
             try {
                 const response = await fetch('/api/commands');
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
                 commands = await response.json();
                 renderTaskGrid(commands);
             } catch (error) {
@@ -216,8 +223,8 @@
             populateParameters(command);
             populateConfig(command);
             outputLog.innerHTML = `<div class="text-overlay0">Output will appear here...</div>`;
+            errorLog.innerHTML = `<div class="text-overlay0">Errors will appear here...</div>`;
 
-            // Reset run button state
             runButton.disabled = false;
             runButton.innerHTML = `<i class="fas fa-play"></i><span>Run Task</span>`;
             runButton.classList.remove('bg-peach', 'cursor-not-allowed');
@@ -258,14 +265,13 @@
                         inputHtml = `<select name="${p.name}" id="param-${p.name}" ${p.required ? 'required' : ''} class="${commonInputClasses}">${p.options.map(o => `<option value="${o}" ${o === defaultValue ? 'selected' : ''}>${o}</option>`).join('')}</select>`;
                         break;
                     case 'checkbox':
-                        // Checkbox is styled differently, so we don't use commonInputClasses here
                         inputHtml = `<div class="flex items-center h-10"><input type="checkbox" name="${p.name}" id="param-${p.name}" ${defaultValue ? 'checked' : ''} class="h-5 w-5 rounded bg-surface0 border-surface1 text-blue focus:ring-blue"></div>`;
                         break;
                     case 'date':
                          const defaultDate = defaultValue || new Date().toISOString().split('T')[0];
                          inputHtml = `<input type="date" name="${p.name}" id="param-${p.name}" value="${defaultDate}" ${p.required ? 'required' : ''} class="${commonInputClasses}">`;
                         break;
-                    default: // text
+                    default:
                         inputHtml = `<input type="text" name="${p.name}" id="param-${p.name}" value="${defaultValue}" ${p.required ? 'required' : ''} placeholder="${p.label}" class="${commonInputClasses}">`;
                 }
                 return `<div><label for="param-${p.name}" class="block text-sm font-medium text-subtext1 mb-1 mt-1">${p.label} ${requiredStar}</label>${inputHtml}</div>`;
@@ -288,6 +294,39 @@
             button.classList.remove('border-transparent', 'text-subtext1', 'hover:text-text', 'hover:border-overlay2');
         }
 
+        function copyContent(elementId) {
+            const element = document.getElementById(elementId);
+            const button = element.previousElementSibling;
+            if (!element || !button) return;
+
+            const textToCopy = element.textContent;
+            const tempTextArea = document.createElement('textarea');
+            tempTextArea.value = textToCopy;
+            tempTextArea.style.position = 'absolute';
+            tempTextArea.style.left = '-9999px';
+            document.body.appendChild(tempTextArea);
+            
+            tempTextArea.select();
+            
+            try {
+                document.execCommand('copy');
+                const originalIcon = button.innerHTML;
+                button.innerHTML = '<i class="fas fa-check text-green"></i>';
+                setTimeout(() => {
+                    button.innerHTML = originalIcon;
+                }, 1500);
+            } catch (err) {
+                console.error('Failed to copy text: ', err);
+                const originalIcon = button.innerHTML;
+                button.innerHTML = '<i class="fas fa-times text-red"></i>';
+                setTimeout(() => {
+                    button.innerHTML = originalIcon;
+                }, 1500);
+            } finally {
+                document.body.removeChild(tempTextArea);
+            }
+        }
+
         async function handleRunTask(event) {
             event.preventDefault();
             if (isExecuting || !selectedTaskId) return;
@@ -296,16 +335,10 @@
             const params = {};
             const formData = new FormData(taskParamsForm);
 
-            // Collect parameter values from the form
             for (const p of command.parameters) {
-                if (p.type === 'checkbox') {
-                    params[p.name] = formData.has(p.name) ? 'true' : 'false';
-                } else {
-                    params[p.name] = formData.get(p.name);
-                }
+                params[p.name] = p.type === 'checkbox' ? formData.has(p.name).toString() : formData.get(p.name);
             }
 
-            // Start Execution
             isExecuting = true;
             runButton.disabled = true;
             runButton.innerHTML = `<i class="fas fa-spinner fa-spin"></i><span>Executing...</span>`;
@@ -314,6 +347,7 @@
 
             switchTab('output');
             outputLog.innerHTML = '';
+            errorLog.innerHTML = '';
 
             try {
                 const response = await fetch('/api/run', {
@@ -327,27 +361,55 @@
                     throw new Error(`Execution failed: ${response.status} ${errorText}`);
                 }
 
-                // Stream Response
                 const reader = response.body.getReader();
                 const decoder = new TextDecoder();
+                let buffer = '';
 
                 while (true) {
                     const { done, value } = await reader.read();
                     if (done) break;
                     
-                    const chunk = decoder.decode(value, { stream: true });
-                    // Sanitize HTML to prevent XSS from script output
-                    const sanitizedChunk = chunk.replace(/</g, "&lt;").replace(/>/g, "&gt;");
-                    // Use textContent to append safely
-                    outputLog.textContent += sanitizedChunk;
-                    outputLog.parentElement.scrollTop = outputLog.parentElement.scrollHeight;
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop();
+
+                    for (const line of lines) {
+                        if (line.trim() === '') continue;
+                        
+                        try {
+                            const msg = JSON.parse(line);
+                            const logElement = document.createElement('div');
+                            logElement.textContent = msg.data;
+
+                            if (msg.stream === 'stdout') {
+                                if (outputLog.innerHTML.includes('text-overlay0')) outputLog.innerHTML = '';
+                                outputLog.appendChild(logElement);
+                                outputLog.parentElement.scrollTop = outputLog.parentElement.scrollHeight;
+                            } else if (msg.stream === 'stderr') {
+                                if (errorLog.innerHTML.includes('text-overlay0')) errorLog.innerHTML = '';
+                                logElement.classList.add('text-red');
+                                errorLog.appendChild(logElement);
+                                errorLog.parentElement.scrollTop = errorLog.parentElement.scrollHeight;
+                            } else if (msg.stream === 'system') {
+                                if (outputLog.innerHTML.includes('text-overlay0')) outputLog.innerHTML = '';
+                                logElement.classList.add('text-lavender', 'italic');
+                                outputLog.appendChild(logElement);
+                                outputLog.parentElement.scrollTop = outputLog.parentElement.scrollHeight;
+                            }
+                        } catch (e) {
+                            console.warn("Could not parse stream line as JSON:", line);
+                        }
+                    }
                 }
 
             } catch (error) {
                 console.error("Error running task:", error);
-                outputLog.textContent += `CLIENT ERROR: ${error.message}`;
+                if (errorLog.innerHTML.includes('text-overlay0')) errorLog.innerHTML = '';
+                const errorElement = document.createElement('div');
+                errorElement.textContent = `CLIENT ERROR: ${error.message}`;
+                errorElement.classList.add('text-red', 'font-bold');
+                errorLog.appendChild(errorElement);
             } finally {
-                // End Execution
                 isExecuting = false;
                 runButton.disabled = false;
                 runButton.innerHTML = `<i class="fas fa-play"></i><span>Run Again</span>`;
@@ -358,24 +420,19 @@
 
         function handleSearch() {
             const searchTerm = searchBar.value.toLowerCase().trim();
-            if (!searchTerm) {
-                renderTaskGrid(commands);
-                return;
-            }
             const filteredCommands = commands.filter(cmd =>
                 cmd.name.toLowerCase().includes(searchTerm) ||
                 cmd.description.toLowerCase().includes(searchTerm)
             );
-            renderTaskGrid(filteredCommands);
+            renderTaskGrid(filteredCommands.length > 0 || searchTerm === '' ? filteredCommands : commands);
+            noResults.classList.toggle('hidden', filteredCommands.length > 0);
         }
 
-        // INITIALIZATION
         document.addEventListener('DOMContentLoaded', () => {
             fetchAndRenderCommands();
             taskParamsForm.addEventListener('submit', handleRunTask);
             searchBar.addEventListener('input', handleSearch);
             
-            // Close modal with Escape key
             window.addEventListener('keydown', (e) => {
                 if (e.key === 'Escape' && selectedTaskId) {
                     closeTaskModal();
