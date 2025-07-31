@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 )
 
@@ -54,24 +55,25 @@ var (
 
 const (
 	// Hardcoded paths as per requirements.
-	commandsConfigPath = "/app/commands.json"
-	pythonVenvPath     = "/app/venv"
-	coldStartScript    = "/app/cold-start.sh"
+	commandsConfigPath = "/app/scripts/commands.json"
+	pythonVenvPath     = "/app/scripts/venv"
+	coldStartScript    = "/app/scripts/cold-start.sh"
 )
 
 func main() {
 	log.Println("Starting Kaname...")
 
 	// 1. Execute the cold-start script before doing anything else.
-	log.Printf("Executing cold-start script at %s...", coldStartScript)
-	cmd := exec.Command("/bin/bash", coldStartScript)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
-		// log.Fatalf("FATAL: Cold-start script failed: %v. Exiting.", err)
-		log.Println("FATAL: Cold-start script failed. Exiting.")
+	if _, err := os.Stat(coldStartScript); err == nil {
+		log.Printf("Executing cold-start script at %s...", coldStartScript)
+		cmd := exec.Command("/bin/bash", coldStartScript)
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		if err := cmd.Run(); err != nil {
+			log.Fatalf("FATAL: Cold-start script failed: %v. Exiting.", err)
+		}
+		log.Println("Cold-start script completed successfully.")
 	}
-	log.Println("Cold-start script completed successfully.")
 
 	// 2. Load command definitions from the JSON file.
 	if err := loadCommands(); err != nil {
@@ -81,9 +83,7 @@ func main() {
 	// 3. Set up HTTP server and handlers.
 	mux := http.NewServeMux()
 
-	// API handler to list available commands.
 	mux.HandleFunc("/api/commands", commandsHandler)
-	// API handler to run a command and stream its output.
 	mux.HandleFunc("/api/run", runHandler)
 
 	// Serve the embedded frontend assets.
@@ -189,7 +189,16 @@ func runHandler(w http.ResponseWriter, r *http.Request) {
 	// but need to handle multiple input array, and true/false (frontend sends bool as string)
 	for _, p := range cmdDef.Parameters {
 		if val, ok := req.Params[p.Name]; ok {
-			args = append(args, fmt.Sprintf("--%s", p.Name), val)
+			if p.Type == "list" {
+				args = append(args, p.Name)
+				values := strings.Split(val, ",")
+				for i, v := range values {
+					values[i] = strings.TrimSpace(v)
+				}
+				args = append(args, values...)
+			} else {
+				args = append(args, p.Name, val)
+			}
 		}
 	}
 
