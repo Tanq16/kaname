@@ -310,7 +310,15 @@
             const button = element.previousElementSibling;
             if (!element || !button) return;
 
-            const textToCopy = element.textContent;
+            // Reconstruct text from child elements to preserve newlines
+            const textToCopy = Array.from(element.children)
+                .map(child => child.textContent)
+                .join('\n');
+            // Don't copy the initial placeholder text
+            if (element.children.length === 1 && element.children[0].classList.contains('text-overlay0')) {
+                return; 
+            }
+
             const tempTextArea = document.createElement('textarea');
             tempTextArea.value = textToCopy;
             tempTextArea.style.position = 'absolute';
@@ -385,7 +393,9 @@
                         
                         try {
                             const msg = JSON.parse(line);
-                            const logElement = document.createElement('div');
+                            // Use span elements inside pre for better semantics. Style them as blocks.
+                            const logElement = document.createElement('span');
+                            logElement.style.display = 'block';
                             logElement.textContent = msg.data;
                             let targetLog, parentElement;
 
@@ -414,7 +424,8 @@
             } catch (error) {
                 console.error("Error running task:", error);
                 if (errorLog.innerHTML.includes('text-overlay0')) errorLog.innerHTML = '';
-                const errorElement = document.createElement('div');
+                const errorElement = document.createElement('span');
+                errorElement.style.display = 'block';
                 errorElement.textContent = `CLIENT ERROR: ${error.message}`;
                 errorElement.classList.add('text-red', 'font-bold');
                 errorLog.appendChild(errorElement);
