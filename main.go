@@ -12,8 +12,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 	"sync"
+	"syscall"
 )
 
 //go:embed frontend
@@ -46,6 +46,11 @@ type ExecutionRequest struct {
 	Params map[string]string `json:"params"`
 }
 
+// CancelRequest is the structure for a request to cancel a command.
+type CancelRequest struct {
+	ID string `json:"id"`
+}
+
 // StreamMessage is the structure for streaming output to the frontend.
 type StreamMessage struct {
 	Stream string `json:"stream"` // "stdout", "stderr", or "system"
@@ -53,14 +58,16 @@ type StreamMessage struct {
 }
 
 var (
-	commands     map[string]CommandDefinition
-	commandsLock sync.RWMutex
+	commands             map[string]CommandDefinition
+	commandsLock         sync.RWMutex
+	runningProcesses     = make(map[string]*exec.Cmd)
+	runningProcessesLock sync.Mutex
 )
 
 const (
-	commandsConfigPath = "/app/scripts/commands.json"
-	pythonVenvPath     = "/app/scripts/venv"
-	coldStartScript    = "/app/scripts/cold-start.sh"
+	commandsConfigPath = "../scripts-dump/kaname/commands.json"
+	pythonVenvPath     = "../scripts-dump/kaname/venv"
+	coldStartScript    = "../scripts-dump/kaname/cold-start.sh"
 )
 
 func main() {
@@ -84,6 +91,7 @@ func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/commands", commandsHandler)
 	mux.HandleFunc("/api/run", runHandler)
+	mux.HandleFunc("/api/cancel", cancelHandler) // New route for cancellation
 
 	frontendFS, err := fs.Sub(embeddedFrontend, "frontend")
 	if err != nil {
@@ -117,6 +125,7 @@ func loadCommands() error {
 				},
 			}
 			data, _ = json.MarshalIndent(dummyCommands, "", "  ")
+			os.WriteFile(commandsConfigPath, data, 0644)
 		} else {
 			return fmt.Errorf("failed to read commands file: %w", err)
 		}
@@ -151,6 +160,45 @@ func commandsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func cancelHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Only POST method is allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req CancelRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	runningProcessesLock.Lock()
+	cmd, ok := runningProcesses[req.ID]
+	runningProcessesLock.Unlock()
+
+	if !ok {
+		log.Printf("WARN: Cancel request for command '%s', but it was not found running.", req.ID)
+		http.Error(w, "Command not found or already stopped", http.StatusNotFound)
+		return
+	}
+
+	// Send SIGINT to the entire process group to interrupt child processes.
+	// This is more robust than just killing the parent shell.
+	if err := syscall.Kill(-cmd.Process.Pid, syscall.SIGINT); err != nil {
+		log.Printf("ERROR: Failed to send SIGINT to process group for command '%s' (PID: %d): %v", req.ID, cmd.Process.Pid, err)
+		// Fallback to just the process if the group kill fails
+		if errProc := cmd.Process.Signal(os.Interrupt); errProc != nil {
+			log.Printf("ERROR: Fallback signal to process for command '%s' also failed: %v", req.ID, errProc)
+			http.Error(w, "Failed to interrupt command", http.StatusInternalServerError)
+			return
+		}
+	}
+
+	log.Printf("INFO: Sent interrupt signal to command '%s' (PID: %d)", req.ID, cmd.Process.Pid)
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprintln(w, "Interrupt signal sent.")
+}
+
 func runHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Only POST method is allowed", http.StatusMethodNotAllowed)
@@ -171,37 +219,61 @@ func runHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var executable string
-	args := []string{cmdDef.ScriptPath}
-	for _, p := range cmdDef.Parameters {
-		if val, ok := req.Params[p.Name]; ok {
-			if p.Type == "list" {
-				args = append(args, p.Name)
-				values := strings.Split(val, ",")
-				for i, v := range values {
-					values[i] = strings.TrimSpace(v)
-				}
-				args = append(args, values...)
-			} else {
-				args = append(args, p.Name, val)
-			}
-		}
+	// Prevent the same task from running concurrently.
+	runningProcessesLock.Lock()
+	if _, exists := runningProcesses[req.ID]; exists {
+		runningProcessesLock.Unlock()
+		http.Error(w, "Task is already running", http.StatusConflict)
+		return
 	}
+	runningProcessesLock.Unlock()
+
+	var executable string
+	var args []string
 
 	switch cmdDef.ScriptType {
 	case "bash":
 		executable = "/bin/bash"
+		args = append(args, cmdDef.ScriptPath)
 	case "python":
 		executable = filepath.Join(pythonVenvPath, "bin", "python")
+		args = append(args, cmdDef.ScriptPath)
 	default:
 		http.Error(w, fmt.Sprintf("Unsupported script type: %s", cmdDef.ScriptType), http.StatusBadRequest)
 		return
+	}
+
+	for _, p := range cmdDef.Parameters {
+		if val, ok := req.Params[p.Name]; ok {
+			if p.Type == "checkbox" {
+				// For checkboxes, the flag is present if true, absent if false.
+				if val == "true" {
+					args = append(args, p.Name)
+				}
+			} else if val != "" {
+				// For other types, add the flag and its value if not empty.
+				args = append(args, p.Name, val)
+			}
+		}
 	}
 
 	log.Printf("Executing command '%s': %s %v", cmdDef.ID, executable, args)
 
 	cmd := exec.Command(executable, args...)
 	cmd.Env = os.Environ()
+	// Create a new process group to ensure signals reach child processes.
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+
+	// Store the command before starting and ensure it's cleaned up on exit.
+	runningProcessesLock.Lock()
+	runningProcesses[req.ID] = cmd
+	runningProcessesLock.Unlock()
+	defer func() {
+		runningProcessesLock.Lock()
+		delete(runningProcesses, req.ID)
+		runningProcessesLock.Unlock()
+		log.Printf("Cleaned up process map for command '%s'", req.ID)
+	}()
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
@@ -239,27 +311,51 @@ func runHandler(w http.ResponseWriter, r *http.Request) {
 		close(outputChan)
 	}()
 
-	// Helper to send a JSON message and flush.
 	sendMessage := func(msg StreamMessage) {
 		if err := json.NewEncoder(w).Encode(msg); err != nil {
 			log.Printf("ERROR: Failed to write stream message: %v", err)
 		}
-		flusher.Flush()
+		if flusher != nil {
+			flusher.Flush()
+		}
 	}
 
-	sendMessage(StreamMessage{Stream: "system", Data: fmt.Sprintf("Starting command: %s", cmdDef.Name)})
+	sendMessage(StreamMessage{Stream: "system", Data: fmt.Sprintf("Starting command: %s (PID: %d)", cmdDef.Name, cmd.Process.Pid)})
 
-	for msg := range outputChan {
-		sendMessage(msg)
-	}
-
-	err = cmd.Wait()
-	if err != nil {
-		sendMessage(StreamMessage{Stream: "system", Data: fmt.Sprintf("FAIL: Command finished with error: %v", err)})
-		log.Printf("ERROR: Command '%s' failed: %v", cmdDef.ID, err)
-	} else {
-		sendMessage(StreamMessage{Stream: "system", Data: "SUCCESS: Command completed successfully."})
-		log.Printf("INFO: Command '%s' completed successfully.", cmdDef.ID)
+	for {
+		select {
+		case msg, ok := <-outputChan:
+			if !ok { // Channel is closed, meaning the process has finished.
+				err = cmd.Wait()
+				if err != nil {
+					if exitErr, ok := err.(*exec.ExitError); ok {
+						if status, ok := exitErr.Sys().(syscall.WaitStatus); ok && status.Signaled() && status.Signal() == syscall.SIGINT {
+							sendMessage(StreamMessage{Stream: "system", Data: "CANCELLED: Command was cancelled by user."})
+							log.Printf("INFO: Command '%s' was cancelled by user.", cmdDef.ID)
+						} else {
+							sendMessage(StreamMessage{Stream: "system", Data: fmt.Sprintf("FAIL: Command finished with error: %v", err)})
+							log.Printf("ERROR: Command '%s' failed: %v", cmdDef.ID, err)
+						}
+					} else {
+						sendMessage(StreamMessage{Stream: "system", Data: fmt.Sprintf("FAIL: Command finished with non-exit error: %v", err)})
+						log.Printf("ERROR: Command '%s' failed with non-exit error: %v", cmdDef.ID, err)
+					}
+				} else {
+					sendMessage(StreamMessage{Stream: "system", Data: "SUCCESS: Command completed successfully."})
+					log.Printf("INFO: Command '%s' completed successfully.", cmdDef.ID)
+				}
+				return // End the handler
+			}
+			sendMessage(msg)
+		case <-r.Context().Done():
+			// Client disconnected, so we should clean up the running process.
+			log.Printf("WARN: Client disconnected for command '%s'. Sending interrupt.", cmdDef.ID)
+			if err := syscall.Kill(-cmd.Process.Pid, syscall.SIGINT); err != nil {
+				log.Printf("ERROR: Failed to kill process for disconnected client: %v", err)
+			}
+			_ = cmd.Wait() // Wait for the process to exit before returning.
+			return         // End the handler
+		}
 	}
 }
 

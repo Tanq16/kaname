@@ -89,11 +89,11 @@
 
     <!-- Modal -->
     <div id="task-modal" class="fixed inset-0 z-40 hidden items-center justify-center p-2 sm:p-4">
-        <div id="modal-backdrop" class="fixed inset-0 bg-crust bg-opacity-75" onclick="closeTaskModal()"></div>
+        <div id="modal-backdrop" class="fixed inset-0 bg-crust bg-opacity-75"></div>
         <div id="modal-content" class="bg-mantle rounded-xl shadow-2xl w-full max-w-4xl flex flex-col max-h-[90vh] z-50 transform transition-all opacity-0 -translate-y-4">
             <div class="flex items-center justify-between p-4 sm:p-5 border-b border-surface0 flex-shrink-0">
                 <h2 id="modal-task-name" class="text-xl font-semibold text-text"></h2>
-                <button onclick="closeTaskModal()" class="text-subtext1 hover:text-text transition-colors">
+                <button id="close-modal-button" class="text-subtext1 hover:text-text transition-colors">
                     <i class="fas fa-times fa-lg"></i>
                 </button>
             </div>
@@ -122,10 +122,14 @@
                     <h3 class="text-lg font-semibold text-text mb-2">Parameters</h3>
                     <form id="task-parameters-form" class="space-y-4">
                         <div id="task-parameters"></div>
-                        <div class="mt-8 pt-6 border-t border-surface0">
-                            <button id="run-button" type="submit" class="w-full lg:w-auto bg-green text-crust font-bold py-2 px-6 rounded-lg hover:bg-opacity-90 transition-colors flex items-center justify-center gap-2">
+                        <div class="mt-8 pt-6 border-t border-surface0 flex items-center gap-4">
+                            <button id="run-button" type="submit" class="w-full sm:w-auto bg-green text-crust font-bold py-2 px-6 rounded-lg hover:bg-opacity-90 transition-colors flex items-center justify-center gap-2">
                                 <i class="fas fa-play"></i>
                                 <span>Run Task</span>
+                            </button>
+                            <button id="cancel-button" type="button" class="w-full sm:w-auto bg-red text-crust font-bold py-2 px-6 rounded-lg hover:bg-opacity-90 transition-colors flex items-center justify-center gap-2 hidden">
+                                <i class="fas fa-stop-circle"></i>
+                                <span>Cancel Task</span>
                             </button>
                         </div>
                     </form>
@@ -145,7 +149,7 @@
                         <button onclick="copyContent('output-log')" class="copy-button absolute top-2 right-2 text-subtext1 hover:text-text transition-colors p-1 rounded-md" title="Copy to Clipboard">
                             <i class="fas fa-copy"></i>
                         </button>
-                        <pre id="output-log" class="whitespace-pre w-full h-full"></pre>
+                        <pre id="output-log" class="whitespace-pre-wrap break-words w-full h-full"></pre>
                     </div>
                 </div>
 
@@ -154,7 +158,7 @@
                         <button onclick="copyContent('error-log')" class="copy-button absolute top-2 right-2 text-subtext1 hover:text-text transition-colors p-1 rounded-md" title="Copy to Clipboard">
                             <i class="fas fa-copy"></i>
                         </button>
-                        <pre id="error-log" class="whitespace-pre w-full h-full"></pre>
+                        <pre id="error-log" class="whitespace-pre-wrap break-words w-full h-full"></pre>
                     </div>
                 </div>
             </div>
@@ -172,13 +176,16 @@
         const noResults = document.getElementById('no-results');
         const searchBar = document.getElementById('search-bar');
         const taskModal = document.getElementById('task-modal');
+        const modalBackdrop = document.getElementById('modal-backdrop');
         const modalContent = document.getElementById('modal-content');
+        const closeModalButton = document.getElementById('close-modal-button');
         const modalTaskName = document.getElementById('modal-task-name');
         const taskParameters = document.getElementById('task-parameters');
         const taskConfigJson = document.getElementById('task-config-json');
         const outputLog = document.getElementById('output-log');
         const errorLog = document.getElementById('error-log');
         const runButton = document.getElementById('run-button');
+        const cancelButton = document.getElementById('cancel-button');
         const taskParamsForm = document.getElementById('task-parameters-form');
 
         // FUNCTIONS
@@ -196,7 +203,7 @@
         }
 
         function renderTaskGrid(commandsToRender) {
-            if (commandsToRender.length === 0) {
+            if (!commandsToRender || commandsToRender.length === 0) {
                 taskGrid.innerHTML = '';
                 noResults.classList.remove('hidden');
                 return;
@@ -208,7 +215,7 @@
                         <h3 class="font-semibold text-text text-lg mb-2">${cmd.name}</h3>
                         <i class="fas ${cmd.icon || 'fa-cog'} text-subtext0 text-2xl"></i>
                     </div>
-                    <p class="text-subtext0 text-sm h-10">${cmd.description}</p>
+                    <p class="text-subtext0 text-sm h-10 overflow-hidden">${cmd.description}</p>
                 </div>
             `).join('');
         }
@@ -225,10 +232,14 @@
             outputLog.innerHTML = `<div class="text-overlay0">Output will appear here...</div>`;
             errorLog.innerHTML = `<div class="text-overlay0">Errors will appear here...</div>`;
 
+            // Reset button states to default
             runButton.disabled = false;
             runButton.innerHTML = `<i class="fas fa-play"></i><span>Run Task</span>`;
             runButton.classList.remove('bg-peach', 'cursor-not-allowed');
             runButton.classList.add('bg-green');
+            cancelButton.classList.add('hidden');
+            cancelButton.disabled = false;
+            cancelButton.innerHTML = `<i class="fas fa-stop-circle"></i><span>Cancel Task</span>`;
 
             switchTab('launch');
 
@@ -305,23 +316,18 @@
             tempTextArea.style.position = 'absolute';
             tempTextArea.style.left = '-9999px';
             document.body.appendChild(tempTextArea);
-            
             tempTextArea.select();
             
             try {
                 document.execCommand('copy');
                 const originalIcon = button.innerHTML;
                 button.innerHTML = '<i class="fas fa-check text-green"></i>';
-                setTimeout(() => {
-                    button.innerHTML = originalIcon;
-                }, 1500);
+                setTimeout(() => { button.innerHTML = originalIcon; }, 1500);
             } catch (err) {
                 console.error('Failed to copy text: ', err);
                 const originalIcon = button.innerHTML;
                 button.innerHTML = '<i class="fas fa-times text-red"></i>';
-                setTimeout(() => {
-                    button.innerHTML = originalIcon;
-                }, 1500);
+                setTimeout(() => { button.innerHTML = originalIcon; }, 1500);
             } finally {
                 document.body.removeChild(tempTextArea);
             }
@@ -336,7 +342,7 @@
             const formData = new FormData(taskParamsForm);
 
             for (const p of command.parameters) {
-                params[p.name] = p.type === 'checkbox' ? formData.has(p.name).toString() : formData.get(p.name);
+                params[p.name] = p.type === 'checkbox' ? formData.has(p.name) : formData.get(p.name);
             }
 
             isExecuting = true;
@@ -344,6 +350,7 @@
             runButton.innerHTML = `<i class="fas fa-spinner fa-spin"></i><span>Executing...</span>`;
             runButton.classList.add('bg-peach', 'cursor-not-allowed');
             runButton.classList.remove('bg-green');
+            cancelButton.classList.remove('hidden');
 
             switchTab('output');
             outputLog.innerHTML = '';
@@ -380,21 +387,23 @@
                             const msg = JSON.parse(line);
                             const logElement = document.createElement('div');
                             logElement.textContent = msg.data;
+                            let targetLog, parentElement;
 
                             if (msg.stream === 'stdout') {
-                                if (outputLog.innerHTML.includes('text-overlay0')) outputLog.innerHTML = '';
-                                outputLog.appendChild(logElement);
-                                outputLog.parentElement.scrollTop = outputLog.parentElement.scrollHeight;
+                                targetLog = outputLog;
                             } else if (msg.stream === 'stderr') {
-                                if (errorLog.innerHTML.includes('text-overlay0')) errorLog.innerHTML = '';
+                                targetLog = errorLog;
                                 logElement.classList.add('text-red');
-                                errorLog.appendChild(logElement);
-                                errorLog.parentElement.scrollTop = errorLog.parentElement.scrollHeight;
                             } else if (msg.stream === 'system') {
-                                if (outputLog.innerHTML.includes('text-overlay0')) outputLog.innerHTML = '';
+                                targetLog = outputLog;
                                 logElement.classList.add('text-lavender', 'italic');
-                                outputLog.appendChild(logElement);
-                                outputLog.parentElement.scrollTop = outputLog.parentElement.scrollHeight;
+                            }
+
+                            if (targetLog) {
+                                if (targetLog.innerHTML.includes('text-overlay0')) targetLog.innerHTML = '';
+                                targetLog.appendChild(logElement);
+                                parentElement = targetLog.parentElement;
+                                parentElement.scrollTop = parentElement.scrollHeight;
                             }
                         } catch (e) {
                             console.warn("Could not parse stream line as JSON:", line);
@@ -415,6 +424,34 @@
                 runButton.innerHTML = `<i class="fas fa-play"></i><span>Run Again</span>`;
                 runButton.classList.remove('bg-peach', 'cursor-not-allowed');
                 runButton.classList.add('bg-green');
+                cancelButton.classList.add('hidden');
+                cancelButton.disabled = false;
+                cancelButton.innerHTML = `<i class="fas fa-stop-circle"></i><span>Cancel Task</span>`;
+            }
+        }
+
+        async function handleCancelTask() {
+            if (!isExecuting || !selectedTaskId) return;
+
+            cancelButton.disabled = true;
+            cancelButton.innerHTML = `<i class="fas fa-spinner fa-spin"></i><span>Cancelling...</span>`;
+
+            try {
+                const response = await fetch('/api/cancel', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id: selectedTaskId }),
+                });
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`Cancel request failed: ${response.status} ${errorText}`);
+                }
+                // The 'finally' block in handleRunTask will reset the UI once the stream closes.
+            } catch (error) {
+                console.error("Error cancelling task:", error);
+                // If cancel fails, re-enable the button so the user can try again.
+                cancelButton.disabled = false;
+                cancelButton.innerHTML = `<i class="fas fa-stop-circle"></i><span>Cancel Task</span>`;
             }
         }
 
@@ -424,15 +461,18 @@
                 cmd.name.toLowerCase().includes(searchTerm) ||
                 cmd.description.toLowerCase().includes(searchTerm)
             );
-            renderTaskGrid(filteredCommands.length > 0 || searchTerm === '' ? filteredCommands : commands);
-            noResults.classList.toggle('hidden', filteredCommands.length > 0);
+            renderTaskGrid(searchTerm === '' ? commands : filteredCommands);
         }
 
         document.addEventListener('DOMContentLoaded', () => {
             fetchAndRenderCommands();
             taskParamsForm.addEventListener('submit', handleRunTask);
+            cancelButton.addEventListener('click', handleCancelTask);
             searchBar.addEventListener('input', handleSearch);
             
+            closeModalButton.addEventListener('click', closeTaskModal);
+            modalBackdrop.addEventListener('click', closeTaskModal);
+
             window.addEventListener('keydown', (e) => {
                 if (e.key === 'Escape' && selectedTaskId) {
                     closeTaskModal();
