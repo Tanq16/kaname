@@ -25,7 +25,7 @@ type CommandParam struct {
 	Type     string   `json:"type"`
 	Required bool     `json:"required"`
 	Options  []string `json:"options,omitempty"`
-	Default  string   `json:"default,omitempty"`
+	Default  any      `json:"default,omitempty"`
 }
 
 // CommandDefinition defines a script that can be executed.
@@ -185,6 +185,8 @@ func runHandler(w http.ResponseWriter, r *http.Request) {
 	var executable string
 	args := []string{cmdDef.ScriptPath}
 
+	// TODO: process params; generally, this does it.
+	// but need to handle multiple input array, and true/false (frontend sends bool as string)
 	for _, p := range cmdDef.Parameters {
 		if val, ok := req.Params[p.Name]; ok {
 			args = append(args, fmt.Sprintf("--%s", p.Name), val)
