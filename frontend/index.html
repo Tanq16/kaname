@@ -59,17 +59,19 @@
 <body class="h-full bg-crust text-text font-sans antialiased">
     <!-- Main App Container -->
     <div id="app" class="flex flex-col h-full">
-        <!-- Top Bar -->
-        <header class="flex items-center justify-between h-20 px-4 lg:px-8 flex-shrink-0 border-b border-mantle">
-            <div class="flex items-center gap-3">
-                <img src="logo.png" alt="Kaname Logo" class="h-8 w-8">
+        <!-- Top Bar - UPDATED FOR MOBILE -->
+        <header class="flex items-center justify-between h-16 sm:h-20 px-4 sm:px-8 flex-shrink-0 border-b border-mantle gap-4">
+            <!-- Logo and Title -->
+            <div class="hidden sm:flex items-center gap-3 flex-shrink-0">
+                <img src="logo.png" alt="Kaname Logo" class="h-16 w-16" onerror="this.style.display='none'">
                 <h1 class="text-2xl font-bold text-mauve">Kaname</h1>
             </div>
-            <div class="relative w-full max-w-xs">
-                <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+            <!-- Search Bar -->
+            <div class="relative w-full sm:max-w-xs">
+                <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
                     <i class="fas fa-search text-subtext0"></i>
                 </div>
-                <input type="search" id="search-bar" placeholder="Search tasks..." class="w-full bg-mantle border border-surface0 text-text rounded-lg p-2 pl-10 focus:ring-2 focus:ring-blue focus:border-blue outline-none transition-colors">
+                <input type="search" id="search-bar" placeholder="Search tasks..." class="w-full bg-mantle text-text rounded-full p-2 pl-10 focus:ring-2 focus:ring-blue focus:border-blue outline-none transition-colors">
             </div>
         </header>
 
@@ -131,15 +133,17 @@
                     </form>
                 </div>
 
+                <!-- Config Tab -->
                 <div id="tab-content-config" class="tab-content hidden">
-                    <div class="bg-base p-4 rounded-lg">
-                        <pre class="text-sm text-subtext1 overflow-x-auto"><code id="task-config-json"></code></pre>
+                    <div class="bg-base p-4 rounded-lg font-mono text-sm h-[32rem] overflow-auto">
+                        <pre class="text-subtext1"><code id="task-config-json"></code></pre>
                     </div>
                 </div>
 
+                <!-- Output Tab -->
                 <div id="tab-content-output" class="tab-content hidden">
-                     <div class="bg-crust p-4 rounded-lg font-mono text-sm h-80 flex flex-col">
-                        <div id="output-log" class="flex-1 overflow-y-auto pr-2 whitespace-pre-wrap"></div>
+                     <div class="bg-base p-4 rounded-lg font-mono text-sm h-[32rem] overflow-auto">
+                        <pre id="output-log" class="whitespace-pre w-full h-full"></pre>
                     </div>
                 </div>
             </div>
@@ -147,12 +151,12 @@
     </div>
 
     <script>
-        // --- STATE ---
+        // STATE
         let commands = [];
         let selectedTaskId = null;
         let isExecuting = false;
 
-        // --- DOM ELEMENTS ---
+        // DOM ELEMENTS
         const taskGrid = document.getElementById('task-grid');
         const noResults = document.getElementById('no-results');
         const searchBar = document.getElementById('search-bar');
@@ -165,7 +169,7 @@
         const runButton = document.getElementById('run-button');
         const taskParamsForm = document.getElementById('task-parameters-form');
 
-        // --- FUNCTIONS ---
+        // FUNCTIONS
 
         /**
          * Fetches commands from the backend and populates the UI.
@@ -184,10 +188,6 @@
             }
         }
 
-        /**
-         * Renders the grid of task cards.
-         * @param {Array} commandsToRender - The array of command objects to display.
-         */
         function renderTaskGrid(commandsToRender) {
             if (commandsToRender.length === 0) {
                 taskGrid.innerHTML = '';
@@ -206,10 +206,6 @@
             `).join('');
         }
 
-        /**
-         * Opens the modal for a specific task.
-         * @param {string} taskId - The ID of the task to open.
-         */
         function openTaskModal(taskId) {
             if (isExecuting) return;
             selectedTaskId = taskId;
@@ -236,9 +232,6 @@
             }, 10);
         }
 
-        /**
-         * Closes the task modal.
-         */
         function closeTaskModal() {
             if (isExecuting) return;
             modalContent.classList.add('opacity-0', '-translate-y-4');
@@ -249,50 +242,40 @@
             }, 200);
         }
 
-        /**
-         * Populates the parameter input fields in the modal.
-         * @param {object} command - The command definition object.
-         */
         function populateParameters(command) {
-            if (command.parameters.length === 0) {
+            if (!command.parameters || command.parameters.length === 0) {
                 taskParameters.innerHTML = '<p class="text-subtext0">This task requires no parameters.</p>';
                 return;
             }
             taskParameters.innerHTML = command.parameters.map(p => {
                 let inputHtml = '';
                 const requiredStar = p.required ? '<span class="text-red">*</span>' : '';
-                const defaultValue = p.default !== null ? p.default : '';
+                const defaultValue = p.default ?? '';
+                const commonInputClasses = "w-full bg-base text-text rounded-lg p-2 focus:ring-2 focus:ring-blue focus:border-blue outline-none";
 
                 switch (p.type) {
                     case 'select':
-                        inputHtml = `<select name="${p.name}" id="param-${p.name}" ${p.required ? 'required' : ''} class="w-full bg-surface0 border border-surface1 text-text rounded-lg p-2 focus:ring-2 focus:ring-blue focus:border-blue outline-none">${p.options.map(o => `<option value="${o}" ${o === defaultValue ? 'selected' : ''}>${o}</option>`).join('')}</select>`;
+                        inputHtml = `<select name="${p.name}" id="param-${p.name}" ${p.required ? 'required' : ''} class="${commonInputClasses}">${p.options.map(o => `<option value="${o}" ${o === defaultValue ? 'selected' : ''}>${o}</option>`).join('')}</select>`;
                         break;
                     case 'checkbox':
+                        // Checkbox is styled differently, so we don't use commonInputClasses here
                         inputHtml = `<div class="flex items-center h-10"><input type="checkbox" name="${p.name}" id="param-${p.name}" ${defaultValue ? 'checked' : ''} class="h-5 w-5 rounded bg-surface0 border-surface1 text-blue focus:ring-blue"></div>`;
                         break;
                     case 'date':
                          const defaultDate = defaultValue || new Date().toISOString().split('T')[0];
-                         inputHtml = `<input type="date" name="${p.name}" id="param-${p.name}" value="${defaultDate}" ${p.required ? 'required' : ''} class="w-full bg-surface0 border border-surface1 text-text rounded-lg p-2 focus:ring-2 focus:ring-blue focus:border-blue outline-none">`;
+                         inputHtml = `<input type="date" name="${p.name}" id="param-${p.name}" value="${defaultDate}" ${p.required ? 'required' : ''} class="${commonInputClasses}">`;
                         break;
                     default: // text
-                        inputHtml = `<input type="text" name="${p.name}" id="param-${p.name}" value="${defaultValue}" ${p.required ? 'required' : ''} class="w-full bg-surface0 border border-surface1 text-text rounded-lg p-2 focus:ring-2 focus:ring-blue focus:border-blue outline-none">`;
+                        inputHtml = `<input type="text" name="${p.name}" id="param-${p.name}" value="${defaultValue}" ${p.required ? 'required' : ''} placeholder="${p.label}" class="${commonInputClasses}">`;
                 }
                 return `<div><label for="param-${p.name}" class="block text-sm font-medium text-subtext1 mb-1 mt-1">${p.label} ${requiredStar}</label>${inputHtml}</div>`;
             }).join('');
         }
 
-        /**
-         * Populates the config tab with the command's JSON definition.
-         * @param {object} command - The command definition object.
-         */
         function populateConfig(command) {
             taskConfigJson.textContent = JSON.stringify(command, null, 2);
         }
 
-        /**
-         * Switches the active tab in the modal.
-         * @param {string} tabName - The name of the tab to switch to ('launch', 'config', 'output').
-         */
         function switchTab(tabName) {
             document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
             document.querySelectorAll('.tab-button').forEach(el => {
@@ -305,10 +288,6 @@
             button.classList.remove('border-transparent', 'text-subtext1', 'hover:text-text', 'hover:border-overlay2');
         }
 
-        /**
-         * Handles the form submission to run a task.
-         * @param {Event} event - The form submission event.
-         */
         async function handleRunTask(event) {
             event.preventDefault();
             if (isExecuting || !selectedTaskId) return;
@@ -326,7 +305,7 @@
                 }
             }
 
-            // --- Start Execution ---
+            // Start Execution
             isExecuting = true;
             runButton.disabled = true;
             runButton.innerHTML = `<i class="fas fa-spinner fa-spin"></i><span>Executing...</span>`;
@@ -348,7 +327,7 @@
                     throw new Error(`Execution failed: ${response.status} ${errorText}`);
                 }
 
-                // --- Stream Response ---
+                // Stream Response
                 const reader = response.body.getReader();
                 const decoder = new TextDecoder();
 
@@ -359,15 +338,16 @@
                     const chunk = decoder.decode(value, { stream: true });
                     // Sanitize HTML to prevent XSS from script output
                     const sanitizedChunk = chunk.replace(/</g, "&lt;").replace(/>/g, "&gt;");
-                    outputLog.innerHTML += sanitizedChunk;
-                    outputLog.scrollTop = outputLog.scrollHeight;
+                    // Use textContent to append safely
+                    outputLog.textContent += sanitizedChunk;
+                    outputLog.parentElement.scrollTop = outputLog.parentElement.scrollHeight;
                 }
 
             } catch (error) {
                 console.error("Error running task:", error);
-                outputLog.innerHTML += `\n<span class="text-red">CLIENT ERROR: ${error.message}</span>`;
+                outputLog.textContent += `\n\n<span class="text-red">CLIENT ERROR: ${error.message}</span>`;
             } finally {
-                // --- End Execution ---
+                // End Execution
                 isExecuting = false;
                 runButton.disabled = false;
                 runButton.innerHTML = `<i class="fas fa-play"></i><span>Run Again</span>`;
@@ -376,9 +356,6 @@
             }
         }
 
-        /**
-         * Filters the task grid based on search input.
-         */
         function handleSearch() {
             const searchTerm = searchBar.value.toLowerCase().trim();
             if (!searchTerm) {
@@ -392,7 +369,7 @@
             renderTaskGrid(filteredCommands);
         }
 
-        // --- INITIALIZATION ---
+        // INITIALIZATION
         document.addEventListener('DOMContentLoaded', () => {
             fetchAndRenderCommands();
             taskParamsForm.addEventListener('submit', handleRunTask);
