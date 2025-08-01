@@ -22,7 +22,7 @@ Kaname features a beautiful Catppuccin Mocha theme for a modern task runner inte
 
 | Desktop View | Mobile View |
 | --- | --- |
-| <img src=".github/assets/rec.gif" width="100%"> | <img src=".github/assets/recm.gif" width="50%"> |
+| <img src=".github/assets/rec.gif" width="100%"> | <img src=".github/assets/recm.gif" width="100%"> |
 
 ## Usage
 
