@@ -42,17 +42,21 @@ docker run --rm -d --name kaname \
   tanq16/kaname:main
 ```
 
-The application will be available at `http://localhost:8080` (or your server IP). You can also use the following compose file:
+The application will be available at `http://localhost:8080` (or your server IP). Additional volumes can be mounted as needed. You can also use the following compose file (also, an example of more volume mounts):
 
 ```yaml
 services:
   kaname:
     image: tanq16/kaname:main
-    container_name: kaname
+    networks:
+      - internal-net
     volumes:
-      - /path/to/your/scripts:/app/scripts # Change as needed
-    ports:
-      - 8080:8080
+      - /home/tanq/scripts-dump:/app/scripts
+      - /home/tanq:/host
+      - /var/run/docker.sock:/var/run/docker.sock
+networks:
+  internal-net:
+    external: true
 ```
 
 To use the binary, download the latest version (only built for AMD64) from the project releases. Ensure requirements and create the `/app/scripts` path.
