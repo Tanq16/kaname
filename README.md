@@ -13,6 +13,7 @@ The goal of the application is to provide a clean and modern interface for trigg
 - **Defining Scripts**: Scripts can be considered as tasks defined in your own repo/directory which you maintain. Just add 2 files - `cold-start.sh` (used to setup the Docker container for your dependencies) and `commands.json` (define your commands as tasks with parameters).
 - **Custom Inputs**: Kaname supports 3 kinds of inputs - `checkbox` (boolean), `list` (comma-separated strings), `text` (string). Ensure your scripts conform to input parameters of these types. This is generally very simple to do with `argparse` for Python and a custom parser in Bash. See the [templates](/templates/) directory for sample Bash, Python, and ColdStart scripts.
 - **Contained Python Environment**: Kaname's container is an `ubuntu:jammy` image with Python pre-installed. All dependencies should be installed into a `venv` within the `/app/scripts` directory (your repo of scripts which you will mount). Ensure you have `venv` in a `.gitignore`. (remember, it's `venv`, not `.venv`).
+- **Environment Variables**: Kaname supports using secrets via environment variables that can be used as parameter values. You can put the secrets inside a `.env` file in you scripts repo, which will be automatically loaded by kaname when you mount your scripts directory. These variables can be used as `$VAR` within parameters.
 - **Web Application**: The strength of Kaname lies in the fact that standard error and standard output are both shown on the web UI for your custom-argument scripts. This means they can even be triggered from a smartphone.
 
 Kaname features a beautiful Catppuccin Mocha theme for a modern task runner interface. Tasks are dynamically loaded from a `commands.json` file, making configuration simple and centralized. Kaname can also be run as a binary, however, it is recommended to run it as a container.
@@ -21,7 +22,7 @@ Kaname features a beautiful Catppuccin Mocha theme for a modern task runner inte
 
 | Desktop View | Mobile View |
 | --- | --- |
-| <img src=".github/assets/rec.gif" width="70%"> | <img src=".github/assets/recm.gif" width="20%"> |
+| <img src=".github/assets/rec.gif" width="100%"> | <img src=".github/assets/recm.gif" width="50%"> |
 
 ## Usage
 

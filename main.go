@@ -64,10 +64,13 @@ var (
 	commandsLock         sync.RWMutex
 	runningProcesses     = make(map[string]*exec.Cmd)
 	runningProcessesLock sync.Mutex
+	envVars              = make(map[string]string)
+	envVarsLock          sync.RWMutex
 )
 
 const (
 	commandsConfigPath = "/app/scripts/commands.json"
+	secretsFilePath    = "/app/scripts/.env"
 	pythonVenvPath     = "/app/scripts/venv"
 	coldStartScript    = "/app/scripts/cold-start.sh"
 )
@@ -86,6 +89,10 @@ func main() {
 		log.Println("Cold-start script completed successfully.")
 	}
 
+	if err := loadEnvVars(); err != nil {
+		log.Printf("WARN: Could not load environment variables: %v", err)
+	}
+
 	if err := loadCommands(); err != nil {
 		log.Fatalf("FATAL: Could not load commands from %s: %v", commandsConfigPath, err)
 	}
@@ -94,6 +101,7 @@ func main() {
 	mux.HandleFunc("/api/commands", commandsHandler)
 	mux.HandleFunc("/api/run", runHandler)
 	mux.HandleFunc("/api/cancel", cancelHandler)
+	mux.HandleFunc("/api/env", envHandler)
 
 	frontendFS, err := fs.Sub(embeddedFrontend, "frontend")
 	if err != nil {
@@ -105,6 +113,54 @@ func main() {
 	if err := http.ListenAndServe(":8080", mux); err != nil {
 		log.Fatalf("FATAL: Server failed to start: %v", err)
 	}
+}
+
+func loadEnvVars() error {
+	envVarsLock.Lock()
+	defer envVarsLock.Unlock()
+
+	envVars = make(map[string]string)
+
+	file, err := os.Open(secretsFilePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			log.Printf("INFO: %s not found. Creating an empty file.", secretsFilePath)
+			if _, createErr := os.Create(secretsFilePath); createErr != nil {
+				return fmt.Errorf("failed to create secrets file: %w", createErr)
+			}
+			return nil
+		}
+		return fmt.Errorf("failed to open secrets file: %w", err)
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	count := 0
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+
+		if parts := strings.SplitN(line, "=", 2); len(parts) == 2 {
+			key := strings.TrimSpace(parts[0])
+			value := strings.TrimSpace(parts[1])
+
+			if strings.HasPrefix(value, `"`) && strings.HasSuffix(value, `"`) {
+				value = strings.Trim(value, `"`)
+			}
+
+			envVars[key] = value
+			count++
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return fmt.Errorf("error reading secrets file: %w", err)
+	}
+
+	log.Printf("Successfully loaded %d environment variable(s).", count)
+	return nil
 }
 
 func loadCommands() error {
@@ -133,7 +189,6 @@ func loadCommands() error {
 		}
 	}
 
-	// Unmarshal directly into the ordered slice
 	if err := json.Unmarshal(data, &commandList); err != nil {
 		return fmt.Errorf("failed to unmarshal commands JSON: %w", err)
 	}
@@ -155,6 +210,52 @@ func commandsHandler(w http.ResponseWriter, r *http.Request) {
 		log.Printf("ERROR: Failed to encode commands: %v", err)
 		http.Error(w, "Failed to encode commands", http.StatusInternalServerError)
 	}
+}
+
+func envHandler(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		getEnvHandler(w, r)
+	case http.MethodPost:
+		updateEnvHandler(w, r)
+	default:
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+func getEnvHandler(w http.ResponseWriter, _ *http.Request) {
+	content, err := os.ReadFile(secretsFilePath)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			log.Printf("ERROR: Failed to read secrets file: %v", err)
+			http.Error(w, "Failed to read secrets file", http.StatusInternalServerError)
+			return
+		}
+	}
+	w.Header().Set("Content-Type", "text/plain")
+	w.Write(content)
+}
+
+func updateEnvHandler(w http.ResponseWriter, r *http.Request) {
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		log.Printf("ERROR: Failed to read request body for env update: %v", err)
+		http.Error(w, "Failed to read request body", http.StatusInternalServerError)
+		return
+	}
+
+	if err := os.WriteFile(secretsFilePath, body, 0644); err != nil {
+		log.Printf("ERROR: Failed to write to secrets file: %v", err)
+		http.Error(w, "Failed to write to secrets file", http.StatusInternalServerError)
+		return
+	}
+
+	if err := loadEnvVars(); err != nil {
+		log.Printf("ERROR: Failed to reload env vars after update: %v", err)
+	}
+
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprintln(w, "Environment variables updated successfully.")
 }
 
 func cancelHandler(w http.ResponseWriter, r *http.Request) {
@@ -238,23 +339,30 @@ func runHandler(w http.ResponseWriter, r *http.Request) {
 
 	for _, p := range cmdDef.Parameters {
 		if val, ok := req.Params[p.Name]; ok {
+			envVarsLock.RLock()
+			if after, ok0 := strings.CutPrefix(val, "$"); ok0 {
+				varName := after
+				if secretVal, found := envVars[varName]; found {
+					val = secretVal
+				}
+			}
+			envVarsLock.RUnlock()
+
 			if p.Type == "checkbox" {
 				if val == "true" {
 					args = append(args, p.Name)
 				}
 			} else if val != "" {
 				args = append(args, p.Name)
-				vals := []string{}
 				if p.Type == "list" {
-					trimmed := []string{}
-					for t := range strings.SplitSeq(req.Params[p.Name], ",") {
-						trimmed = append(trimmed, strings.TrimSpace(t))
+					var vals []string
+					for t := range strings.SplitSeq(val, ",") {
+						vals = append(vals, strings.TrimSpace(t))
 					}
-					vals = append(vals, trimmed...)
+					args = append(args, vals...)
 				} else {
-					vals = append(vals, val)
+					args = append(args, val)
 				}
-				args = append(args, vals...)
 			}
 		}
 	}

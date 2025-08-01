@@ -68,11 +68,18 @@
                 <img src="/logo.png" alt="Kaname Logo" class="h-16 w-16 rounded-full" onerror="this.style.display='none'">
                 <h1 class="text-2xl font-bold text-mauve">Kaname</h1>
             </div>
-            <div class="relative w-full sm:max-w-xs">
-                <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                    <i class="fas fa-search text-subtext0"></i>
+            
+            <div class="flex items-center gap-4 flex-1 justify-end">
+                <button id="env-button" class="flex-shrink-0 flex items-center gap-2 bg-mantle hover:bg-surface1 text-subtext1 hover:text-text px-3 sm:py-2 py-3 rounded-full transition-colors">
+                    <i class="fas fa-key"></i>
+                    <span class="hidden sm:inline">.env</span>
+                </button>
+                <div class="relative w-full sm:max-w-xs">
+                    <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                        <i class="fas fa-search text-subtext0"></i>
+                    </div>
+                    <input type="search" id="search-bar" placeholder="Search tasks..." class="w-full bg-mantle text-text rounded-full p-2 pl-10 focus:ring-2 focus:ring-blue focus:border-blue outline-none transition-colors">
                 </div>
-                <input type="search" id="search-bar" placeholder="Search tasks..." class="w-full bg-mantle text-text rounded-full p-2 pl-10 focus:ring-2 focus:ring-blue focus:border-blue outline-none transition-colors">
             </div>
         </header>
 
@@ -87,7 +94,7 @@
         </main>
     </div>
 
-    <!-- Modal -->
+    <!-- Task Modal -->
     <div id="task-modal" class="fixed inset-0 z-40 hidden items-center justify-center p-2 sm:p-4">
         <div id="modal-backdrop" class="fixed inset-0 bg-crust bg-opacity-75"></div>
         <div id="modal-content" class="bg-mantle rounded-xl shadow-2xl w-full max-w-4xl flex flex-col max-h-[90vh] z-50 transform transition-all opacity-0 -translate-y-4">
@@ -165,6 +172,29 @@
         </div>
     </div>
 
+    <!-- Env Modal -->
+    <div id="env-modal" class="fixed inset-0 z-50 hidden items-center justify-center p-2 sm:p-4">
+        <div id="env-modal-backdrop" class="fixed inset-0 bg-crust bg-opacity-75"></div>
+        <div id="env-modal-content" class="bg-mantle rounded-xl shadow-2xl w-full max-w-2xl flex flex-col max-h-[90vh] z-50 transform transition-all opacity-0 -translate-y-4">
+            <div class="flex items-center justify-between p-4 sm:p-5 border-b border-surface0 flex-shrink-0">
+                <h2 class="text-xl font-semibold text-text flex items-center gap-3"><i class="fas fa-key text-yellow"></i>Environment Variables (.env)</h2>
+                <button id="close-env-modal-button" class="text-subtext1 hover:text-text transition-colors">
+                    <i class="fas fa-times fa-lg"></i>
+                </button>
+            </div>
+            
+            <div class="flex-1 p-4 sm:p-6 overflow-y-auto">
+                <p class="text-sm text-subtext0 mb-4">Define secrets here in <code>KEY="VALUE"</code> format. These can be referenced in task parameters using <code>$KEY</code>. Lines starting with <code>#</code> are ignored.</p>
+                <textarea id="env-textarea" class="w-full h-96 bg-base p-4 rounded-lg font-mono text-sm text-subtext1 focus:ring-2 focus:ring-blue focus:border-blue outline-none" placeholder="DATABASE_PASSWORD=&quot;your_secret_password&quot;"></textarea>
+            </div>
+
+            <div class="flex justify-end items-center p-4 border-t border-surface0 flex-shrink-0 gap-4">
+                <button id="cancel-env-button" class="bg-surface1 text-text font-bold py-2 px-6 rounded-lg hover:bg-surface2 transition-colors">Cancel</button>
+                <button id="save-env-button" class="bg-green text-crust font-bold py-2 px-6 rounded-lg hover:bg-opacity-90 transition-colors">Accept</button>
+            </div>
+        </div>
+    </div>
+
     <script>
         // STATE
         let commands = [];
@@ -187,6 +217,16 @@
         const runButton = document.getElementById('run-button');
         const cancelButton = document.getElementById('cancel-button');
         const taskParamsForm = document.getElementById('task-parameters-form');
+        
+        // DOM ELEMENTS for .env modal
+        const envButton = document.getElementById('env-button');
+        const envModal = document.getElementById('env-modal');
+        const envModalBackdrop = document.getElementById('env-modal-backdrop');
+        const envModalContent = document.getElementById('env-modal-content');
+        const closeEnvModalButton = document.getElementById('close-env-modal-button');
+        const cancelEnvButton = document.getElementById('cancel-env-button');
+        const saveEnvButton = document.getElementById('save-env-button');
+        const envTextarea = document.getElementById('env-textarea');
 
         // FUNCTIONS
 
@@ -232,7 +272,6 @@
             outputLog.innerHTML = `<div class="text-overlay0">Output will appear here...</div>`;
             errorLog.innerHTML = `<div class="text-overlay0">Errors will appear here...</div>`;
 
-            // Reset button states to default
             runButton.disabled = false;
             runButton.innerHTML = `<i class="fas fa-play"></i><span>Run Task</span>`;
             runButton.classList.remove('bg-peach', 'cursor-not-allowed');
@@ -310,11 +349,9 @@
             const button = element.previousElementSibling;
             if (!element || !button) return;
 
-            // Reconstruct text from child elements to preserve newlines
             const textToCopy = Array.from(element.children)
                 .map(child => child.textContent)
                 .join('\n');
-            // Don't copy the initial placeholder text
             if (element.children.length === 1 && element.children[0].classList.contains('text-overlay0')) {
                 return; 
             }
@@ -393,7 +430,6 @@
                         
                         try {
                             const msg = JSON.parse(line);
-                            // Use span elements inside pre for better semantics. Style them as blocks.
                             const logElement = document.createElement('span');
                             logElement.style.display = 'block';
                             logElement.textContent = msg.data;
@@ -457,10 +493,8 @@
                     const errorText = await response.text();
                     throw new Error(`Cancel request failed: ${response.status} ${errorText}`);
                 }
-                // The 'finally' block in handleRunTask will reset the UI once the stream closes.
             } catch (error) {
                 console.error("Error cancelling task:", error);
-                // If cancel fails, re-enable the button so the user can try again.
                 cancelButton.disabled = false;
                 cancelButton.innerHTML = `<i class="fas fa-stop-circle"></i><span>Cancel Task</span>`;
             }
@@ -475,6 +509,85 @@
             renderTaskGrid(searchTerm === '' ? commands : filteredCommands);
         }
 
+        // .env Modal Functions
+        async function openEnvModal() {
+            if (isExecuting) return;
+
+            try {
+                saveEnvButton.disabled = true;
+                saveEnvButton.innerHTML = `<i class="fas fa-spinner fa-spin"></i><span>Loading...</span>`;
+
+                const response = await fetch('/api/env');
+                if (!response.ok) throw new Error(`Failed to fetch .env content: ${response.status}`);
+                
+                envTextarea.value = await response.text();
+
+                envModal.classList.remove('hidden');
+                envModal.classList.add('flex');
+                setTimeout(() => {
+                    envModalContent.classList.remove('opacity-0', '-translate-y-4');
+                }, 10);
+            } catch (error) {
+                console.error(error);
+                envTextarea.value = `# Error loading .env file.\n# ${error.message}`;
+            } finally {
+                saveEnvButton.disabled = false;
+                saveEnvButton.innerHTML = `Accept`;
+            }
+        }
+
+        function closeEnvModal() {
+            envModalContent.classList.add('opacity-0', '-translate-y-4');
+            setTimeout(() => {
+                envModal.classList.add('hidden');
+                envModal.classList.remove('flex');
+            }, 200);
+        }
+
+        async function handleSaveEnv() {
+            saveEnvButton.disabled = true;
+            saveEnvButton.innerHTML = `<i class="fas fa-spinner fa-spin"></i><span>Saving...</span>`;
+
+            try {
+                const response = await fetch('/api/env', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain' },
+                    body: envTextarea.value,
+                });
+
+                if (!response.ok) {
+                    throw new Error(`Failed to save .env: ${await response.text()}`);
+                }
+                
+                saveEnvButton.classList.remove('bg-green');
+                saveEnvButton.classList.add('bg-blue');
+                saveEnvButton.innerHTML = `<i class="fas fa-check"></i><span>Saved!</span>`;
+                
+                setTimeout(() => {
+                    closeEnvModal();
+                    setTimeout(() => {
+                        saveEnvButton.disabled = false;
+                        saveEnvButton.classList.remove('bg-blue');
+                        saveEnvButton.classList.add('bg-green');
+                        saveEnvButton.innerHTML = 'Accept';
+                    }, 500);
+                }, 1000);
+
+            } catch (error) {
+                console.error(error);
+                saveEnvButton.classList.remove('bg-green');
+                saveEnvButton.classList.add('bg-red');
+                saveEnvButton.innerHTML = 'Error!';
+                
+                setTimeout(() => {
+                    saveEnvButton.disabled = false;
+                    saveEnvButton.classList.remove('bg-red');
+                    saveEnvButton.classList.add('bg-green');
+                    saveEnvButton.innerHTML = 'Accept';
+                }, 2000);
+            }
+        }
+
         document.addEventListener('DOMContentLoaded', () => {
             fetchAndRenderCommands();
             taskParamsForm.addEventListener('submit', handleRunTask);
@@ -484,9 +597,19 @@
             closeModalButton.addEventListener('click', closeTaskModal);
             modalBackdrop.addEventListener('click', closeTaskModal);
 
+            envButton.addEventListener('click', openEnvModal);
+            closeEnvModalButton.addEventListener('click', closeEnvModal);
+            envModalBackdrop.addEventListener('click', closeEnvModal);
+            cancelEnvButton.addEventListener('click', closeEnvModal);
+            saveEnvButton.addEventListener('click', handleSaveEnv);
+
             window.addEventListener('keydown', (e) => {
-                if (e.key === 'Escape' && selectedTaskId) {
-                    closeTaskModal();
+                if (e.key === 'Escape') {
+                    if (!envModal.classList.contains('hidden')) {
+                        closeEnvModal();
+                    } else if (!taskModal.classList.contains('hidden')) {
+                        closeTaskModal();
+                    }
                 }
             });
         });
