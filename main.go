@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"syscall"
 )
@@ -58,7 +59,8 @@ type StreamMessage struct {
 }
 
 var (
-	commands             map[string]CommandDefinition
+	commandList          []CommandDefinition
+	commandMap           map[string]CommandDefinition
 	commandsLock         sync.RWMutex
 	runningProcesses     = make(map[string]*exec.Cmd)
 	runningProcessesLock sync.Mutex
@@ -91,7 +93,7 @@ func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/commands", commandsHandler)
 	mux.HandleFunc("/api/run", runHandler)
-	mux.HandleFunc("/api/cancel", cancelHandler) // New route for cancellation
+	mux.HandleFunc("/api/cancel", cancelHandler)
 
 	frontendFS, err := fs.Sub(embeddedFrontend, "frontend")
 	if err != nil {
@@ -131,16 +133,16 @@ func loadCommands() error {
 		}
 	}
 
-	var loadedCommands []CommandDefinition
-	if err := json.Unmarshal(data, &loadedCommands); err != nil {
+	// Unmarshal directly into the ordered slice
+	if err := json.Unmarshal(data, &commandList); err != nil {
 		return fmt.Errorf("failed to unmarshal commands JSON: %w", err)
 	}
 
-	commands = make(map[string]CommandDefinition)
-	for _, cmd := range loadedCommands {
-		commands[cmd.ID] = cmd
+	commandMap = make(map[string]CommandDefinition)
+	for _, cmd := range commandList {
+		commandMap[cmd.ID] = cmd
 	}
-	log.Printf("Successfully loaded %d command(s).", len(commands))
+	log.Printf("Successfully loaded %d command(s).", len(commandList))
 	return nil
 }
 
@@ -148,13 +150,8 @@ func commandsHandler(w http.ResponseWriter, r *http.Request) {
 	commandsLock.RLock()
 	defer commandsLock.RUnlock()
 
-	var cmdList []CommandDefinition
-	for _, cmd := range commands {
-		cmdList = append(cmdList, cmd)
-	}
-
 	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(cmdList); err != nil {
+	if err := json.NewEncoder(w).Encode(commandList); err != nil {
 		log.Printf("ERROR: Failed to encode commands: %v", err)
 		http.Error(w, "Failed to encode commands", http.StatusInternalServerError)
 	}
@@ -182,11 +179,8 @@ func cancelHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Send SIGINT to the entire process group to interrupt child processes.
-	// This is more robust than just killing the parent shell.
 	if err := syscall.Kill(-cmd.Process.Pid, syscall.SIGINT); err != nil {
 		log.Printf("ERROR: Failed to send SIGINT to process group for command '%s' (PID: %d): %v", req.ID, cmd.Process.Pid, err)
-		// Fallback to just the process if the group kill fails
 		if errProc := cmd.Process.Signal(os.Interrupt); errProc != nil {
 			log.Printf("ERROR: Fallback signal to process for command '%s' also failed: %v", req.ID, errProc)
 			http.Error(w, "Failed to interrupt command", http.StatusInternalServerError)
@@ -212,14 +206,13 @@ func runHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	commandsLock.RLock()
-	cmdDef, ok := commands[req.ID]
+	cmdDef, ok := commandMap[req.ID]
 	commandsLock.RUnlock()
 	if !ok {
 		http.Error(w, "Command not found", http.StatusNotFound)
 		return
 	}
 
-	// Prevent the same task from running concurrently.
 	runningProcessesLock.Lock()
 	if _, exists := runningProcesses[req.ID]; exists {
 		runningProcessesLock.Unlock()
@@ -246,13 +239,22 @@ func runHandler(w http.ResponseWriter, r *http.Request) {
 	for _, p := range cmdDef.Parameters {
 		if val, ok := req.Params[p.Name]; ok {
 			if p.Type == "checkbox" {
-				// For checkboxes, the flag is present if true, absent if false.
 				if val == "true" {
 					args = append(args, p.Name)
 				}
 			} else if val != "" {
-				// For other types, add the flag and its value if not empty.
-				args = append(args, p.Name, val)
+				args = append(args, p.Name)
+				vals := []string{}
+				if p.Type == "list" {
+					trimmed := []string{}
+					for t := range strings.SplitSeq(req.Params[p.Name], ",") {
+						trimmed = append(trimmed, strings.TrimSpace(t))
+					}
+					vals = append(vals, trimmed...)
+				} else {
+					vals = append(vals, val)
+				}
+				args = append(args, vals...)
 			}
 		}
 	}
@@ -261,10 +263,8 @@ func runHandler(w http.ResponseWriter, r *http.Request) {
 
 	cmd := exec.Command(executable, args...)
 	cmd.Env = os.Environ()
-	// Create a new process group to ensure signals reach child processes.
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 
-	// Store the command before starting and ensure it's cleaned up on exit.
 	runningProcessesLock.Lock()
 	runningProcesses[req.ID] = cmd
 	runningProcessesLock.Unlock()
@@ -325,7 +325,7 @@ func runHandler(w http.ResponseWriter, r *http.Request) {
 	for {
 		select {
 		case msg, ok := <-outputChan:
-			if !ok { // Channel is closed, meaning the process has finished.
+			if !ok {
 				err = cmd.Wait()
 				if err != nil {
 					if exitErr, ok := err.(*exec.ExitError); ok {
@@ -344,23 +344,20 @@ func runHandler(w http.ResponseWriter, r *http.Request) {
 					sendMessage(StreamMessage{Stream: "system", Data: "SUCCESS: Command completed successfully."})
 					log.Printf("INFO: Command '%s' completed successfully.", cmdDef.ID)
 				}
-				return // End the handler
+				return
 			}
 			sendMessage(msg)
 		case <-r.Context().Done():
-			// Client disconnected, so we should clean up the running process.
 			log.Printf("WARN: Client disconnected for command '%s'. Sending interrupt.", cmdDef.ID)
 			if err := syscall.Kill(-cmd.Process.Pid, syscall.SIGINT); err != nil {
 				log.Printf("ERROR: Failed to kill process for disconnected client: %v", err)
 			}
-			_ = cmd.Wait() // Wait for the process to exit before returning.
-			return         // End the handler
+			_ = cmd.Wait()
+			return
 		}
 	}
 }
 
-// streamPipe reads from an io.Reader, wraps each line in a StreamMessage,
-// and sends it to a channel.
 func streamPipe(pipe io.Reader, streamType string, c chan<- StreamMessage, wg *sync.WaitGroup) {
 	defer wg.Done()
 	scanner := bufio.NewScanner(pipe)

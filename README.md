@@ -5,39 +5,34 @@
   <a href="https://github.com/tanq16/kaname/actions/workflows/release.yml"><img alt="Build Workflow" src="https://github.com/tanq16/kaname/actions/workflows/release.yml/badge.svg"></a>&nbsp;<a href="https://github.com/Tanq16/kaname/releases"><img alt="GitHub Release" src="https://img.shields.io/github/v/release/tanq16/kaname"></a>&nbsp;<a href="https://hub.docker.com/r/tanq16/kaname"><img alt="Docker Pulls" src="https://img.shields.io/docker/pulls/tanq16/kaname"></a><br><br>
 </div>
 
-A simple, self-hosted, and elegant web-based UI for running your predefined scripts. Kaname is designed for those who need a straightforward way to execute tasks on a server without exposing SSH or dealing with complex command-line interfaces.
+A simple, self-hosted, and elegant web-based UI for running your predefined scripts. Kaname is designed for those who need a straightforward way to execute tasks on a server without exposing SSH or dealing with command-line interfaces.
 
-The goal of the application is to provide a clean and modern interface for triggering scripts like shell or Python. You define your tasks and their parameters in a simple JSON file, and Kaname presents them as interactive cards in a beautiful UI. It's perfect for homelabs, small teams, or anyone looking to simplify their operational workflows.
+The goal of the application is to provide a clean and modern interface for triggering scripts written in Bash or Python. You define your tasks and their parameters in a simple JSON file, and Kaname presents them as interactive cards in a beautiful UI. It's geared specifically towards homelabs. Here are some main points:
 
-## Features
+- **Ease of Use**: We all have scripts we have already written and collected, but converting them to tools or processes in workflow orchestrators like n8n can be quite hard. Kaname is much simpler to operate in a BYOS (bring your own script) manner.
+- **Defining Scripts**: Scripts can be considered as tasks defined in your own repo/directory which you maintain. Just add 2 files - `cold-start.sh` (used to setup the Docker container for your dependencies) and `commands.json` (define your commands as tasks with parameters).
+- **Custom Inputs**: Kaname supports 3 kinds of inputs - `checkbox` (boolean), `list` (comma-separated strings), `text` (string). Ensure your scripts conform to input parameters of these types. This is generally very simple to do with `argparse` for Python and a custom parser in Bash. See the [templates](/templates/) directory for sample Bash, Python, and ColdStart scripts.
+- **Contained Python Environment**: Kaname's container is an `ubuntu:jammy` image with Python pre-installed. All dependencies should be installed into a `venv` within the `/app/scripts` directory (your repo of scripts which you will mount). Ensure you have `venv` in a `.gitignore`. (remember, it's `venv`, not `.venv`).
+- **Web Application**: The strength of Kaname lies in the fact that standard error and standard output are both shown on the web UI for your custom-argument scripts. This means they can even be triggered from a smartphone.
 
-- Beautiful Catppuccin Mocha themed application for a modern task runner interface.
-- Dynamically loads tasks from a `commands.json` file, making configuration simple and centralized.
-- Supports various script types, including `bash` and `python`, with easy extension for more.
-- Allows for script parameterization with UI elements like text fields, dropdowns, checkboxes, and date pickers.
-- Real-time streaming of both `stdout` and `stderr` to separate, organized tabs in the UI.
-- Fully self-hosted with local assets, running as a single, self-contained binary or container.
-- Efficient and lightweight, with a minimal binary and container size.
+Kaname features a beautiful Catppuccin Mocha theme for a modern task runner interface. Tasks are dynamically loaded from a `commands.json` file, making configuration simple and centralized. Kaname can also be run as a binary, however, it is recommended to run it as a container.
 
 ## Screenshots
 
 | Desktop View | Mobile View |
 | --- | --- |
-| | |
-| | |
+| <img src=".github/assets/rec.gif" width="70%"> | <img src=".github/assets/recm.gif" width="20%"> |
 
 ## Usage
-
-### Docker (Recommended)
 
 The simplest way to run Kaname is with Docker, which ensures the correct directory structure for scripts.
 
 ```bash
 # Create a directory to hold your scripts and configuration
 mkdir -p $HOME/kaname/scripts
+```
 
-# Place your commands.json and scripts inside $HOME/kaname/scripts
-````
+Place your `commands.json`, scripts, and `cold-start.sh` inside $HOME/kaname/scripts `cold-start.sh` is not a requirement, but recommended for container setup.
 
 ```bash
 docker run --rm -d --name kaname \
@@ -57,34 +52,11 @@ services:
       - /path/to/your/scripts:/app/scripts # Change as needed
     ports:
       - 8080:8080
-    restart: unless-stopped
 ```
 
-### Binary
+To use the binary, download the latest version (only built for AMD64) from the project releases. Ensure requirements and create the `/app/scripts` path.
 
-To use the binary, download the latest version from the project releases. Note that Kaname expects the scripts and `commands.json` to be in a specific path (`/app/scripts`), so running it outside of Docker requires matching this structure.
-
-### Local development
-
-With `Go 1.23+` installed, run the following to download the binary to your GOBIN:
-
-```bash
-go install [github.com/tanq16/kaname@latest](https://github.com/tanq16/kaname@latest)
-```
-
-Or, you can build from source like so:
-
-```bash
-git clone [https://github.com/tanq16/kaname.git](https://github.com/tanq16/kaname.git) && \
-cd kaname && \
-go build .
-```
-
-## Configuration
-
-Kaname is configured via a single `commands.json` file placed in your scripts directory. This file contains an array of command objects.
-
-Here is an example of a command definition:
+Kaname is configured via a single `commands.json` file placed in your scripts directory. This file contains an array of command objects. Here is an example of a command definition:
 
 ```json
 [
@@ -104,14 +76,6 @@ Here is an example of a command definition:
         "default": "/app/data/default.txt"
       },
       {
-        "name": "--mode",
-        "label": "Processing Mode",
-        "type": "select",
-        "required": false,
-        "default": "preview",
-        "options": ["preview", "process"]
-      },
-      {
         "name": "--verbose",
         "label": "Enable Verbose Logging",
         "type": "checkbox",
@@ -124,4 +88,4 @@ Here is an example of a command definition:
 ```
 
 > [!NOTE]
-> You can use any Font Awesome icon class for the `icon` field. The `name` of a parameter should match the command-line flag your script expects (e.g., `--input-file`).
+> You can use any Font Awesome icon class for the `icon` field. Also, the `name` of a parameter should match the command-line flag your script expects (e.g., `--input-file`).
