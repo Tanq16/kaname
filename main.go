@@ -69,10 +69,10 @@ var (
 )
 
 const (
-	commandsConfigPath = "/app/scripts/commands.json"
-	secretsFilePath    = "/app/scripts/.env"
-	pythonVenvPath     = "/app/scripts/venv"
-	coldStartScript    = "/app/scripts/cold-start.sh"
+	commandsConfigPath = "../scripts-dump/commands.json"
+	secretsFilePath    = "../scripts-dump/.env"
+	pythonVenvPath     = "../scripts-dump/venv"
+	coldStartScript    = "../scripts-dump/cold-start.sh"
 )
 
 func main() {
@@ -102,6 +102,7 @@ func main() {
 	mux.HandleFunc("/api/run", runHandler)
 	mux.HandleFunc("/api/cancel", cancelHandler)
 	mux.HandleFunc("/api/env", envHandler)
+	mux.HandleFunc("/api/refresh", refreshHandler)
 
 	frontendFS, err := fs.Sub(embeddedFrontend, "frontend")
 	if err != nil {
@@ -113,6 +114,21 @@ func main() {
 	if err := http.ListenAndServe(":8080", mux); err != nil {
 		log.Fatalf("FATAL: Server failed to start: %v", err)
 	}
+}
+
+func refreshHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Only POST method is allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	log.Println("INFO: Received refresh request. Reloading commands.")
+	if err := loadCommands(); err != nil {
+		log.Printf("ERROR: Failed to reload commands: %v", err)
+		http.Error(w, fmt.Sprintf("Failed to reload commands: %v", err), http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprintln(w, "Command list refreshed successfully.")
 }
 
 func loadEnvVars() error {

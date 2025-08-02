@@ -70,6 +70,12 @@
             </div>
             
             <div class="flex items-center gap-4 flex-1 justify-end">
+                <!-- Refresh Button -->
+                <button id="refresh-button" class="flex-shrink-0 flex items-center gap-2 bg-mantle hover:bg-surface1 text-subtext1 hover:text-text px-3 sm:py-2 py-3 rounded-full transition-colors">
+                    <i class="fas fa-sync-alt"></i>
+                    <!-- Text visible only on larger screens -->
+                    <span class="hidden sm:inline">Refresh</span>
+                </button>
                 <button id="env-button" class="flex-shrink-0 flex items-center gap-2 bg-mantle hover:bg-surface1 text-subtext1 hover:text-text px-3 sm:py-2 py-3 rounded-full transition-colors">
                     <i class="fas fa-key"></i>
                     <span class="hidden sm:inline">.env</span>
@@ -200,6 +206,7 @@
         let commands = [];
         let selectedTaskId = null;
         let isExecuting = false;
+        let isRefreshing = false;
 
         // DOM ELEMENTS
         const taskGrid = document.getElementById('task-grid');
@@ -227,6 +234,7 @@
         const cancelEnvButton = document.getElementById('cancel-env-button');
         const saveEnvButton = document.getElementById('save-env-button');
         const envTextarea = document.getElementById('env-textarea');
+        const refreshButton = document.getElementById('refresh-button');
 
         // FUNCTIONS
 
@@ -500,6 +508,39 @@
             }
         }
 
+        async function handleRefresh() {
+            if (isRefreshing) return;
+            isRefreshing = true;
+            const originalIcon = refreshButton.querySelector('i').className;
+            const originalText = refreshButton.querySelector('span').textContent;
+            refreshButton.disabled = true;
+            refreshButton.innerHTML = `<i class="fas fa-spinner fa-spin"></i><span class="hidden sm:inline">Refreshing...</span>`;
+            
+            try {
+                const response = await fetch('/api/refresh', {
+                    method: 'POST',
+                });
+
+                if (!response.ok) {
+                    throw new Error(`Backend refresh failed: ${response.status}`);
+                }
+                await fetchAndRenderCommands();
+            } catch (error) {
+                console.error("Error refreshing command list:", error);
+                refreshButton.innerHTML = `<i class="fas fa-exclamation-triangle text-red"></i><span class="hidden sm:inline">Failed!</span>`;
+                setTimeout(() => {
+                    refreshButton.innerHTML = `<i class="${originalIcon}"></i><span class="hidden sm:inline">${originalText}</span>`;
+                }, 2000);
+            } finally {
+                isRefreshing = false;
+                refreshButton.disabled = false;
+                // Return to the original state if not already in an error state
+                if (!refreshButton.innerHTML.includes('fa-exclamation-triangle')) {
+                    refreshButton.innerHTML = `<i class="${originalIcon}"></i><span class="hidden sm:inline">${originalText}</span>`;
+                }
+            }
+        }
+
         function handleSearch() {
             const searchTerm = searchBar.value.toLowerCase().trim();
             const filteredCommands = commands.filter(cmd =>
@@ -593,15 +634,14 @@
             taskParamsForm.addEventListener('submit', handleRunTask);
             cancelButton.addEventListener('click', handleCancelTask);
             searchBar.addEventListener('input', handleSearch);
-            
             closeModalButton.addEventListener('click', closeTaskModal);
             modalBackdrop.addEventListener('click', closeTaskModal);
-
             envButton.addEventListener('click', openEnvModal);
             closeEnvModalButton.addEventListener('click', closeEnvModal);
             envModalBackdrop.addEventListener('click', closeEnvModal);
             cancelEnvButton.addEventListener('click', closeEnvModal);
             saveEnvButton.addEventListener('click', handleSaveEnv);
+            refreshButton.addEventListener('click', handleRefresh);
 
             window.addEventListener('keydown', (e) => {
                 if (e.key === 'Escape') {
