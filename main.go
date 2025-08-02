@@ -69,10 +69,10 @@ var (
 )
 
 const (
-	commandsConfigPath = "../scripts-dump/commands.json"
-	secretsFilePath    = "../scripts-dump/.env"
-	pythonVenvPath     = "../scripts-dump/venv"
-	coldStartScript    = "../scripts-dump/cold-start.sh"
+	commandsConfigPath = "/app/scripts/commands.json"
+	secretsFilePath    = "/app/scripts/.env"
+	pythonVenvPath     = "/app/scripts/venv"
+	coldStartScript    = "/app/scripts/cold-start.sh"
 )
 
 func main() {
