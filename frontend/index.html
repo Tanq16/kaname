@@ -78,7 +78,7 @@
                 </button>
                 <button id="env-button" class="flex-shrink-0 flex items-center gap-2 bg-mantle hover:bg-surface1 text-subtext1 hover:text-text px-3 sm:py-2 py-3 rounded-full transition-colors">
                     <i class="fas fa-key"></i>
-                    <span class="hidden sm:inline">.env</span>
+                    <span class="hidden sm:inline">Secrets</span>
                 </button>
                 <div class="relative w-full sm:max-w-xs">
                     <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
@@ -183,7 +183,7 @@
         <div id="env-modal-backdrop" class="fixed inset-0 bg-crust bg-opacity-75"></div>
         <div id="env-modal-content" class="bg-mantle rounded-xl shadow-2xl w-full max-w-2xl flex flex-col max-h-[90vh] z-50 transform transition-all opacity-0 -translate-y-4">
             <div class="flex items-center justify-between p-4 sm:p-5 border-b border-surface0 flex-shrink-0">
-                <h2 class="text-xl font-semibold text-text flex items-center gap-3"><i class="fas fa-key text-yellow"></i>Environment Variables (.env)</h2>
+                <h2 class="text-xl font-semibold text-text flex items-center gap-3"><i class="fas fa-key text-yellow"></i>Secret Variables</h2>
                 <button id="close-env-modal-button" class="text-subtext1 hover:text-text transition-colors">
                     <i class="fas fa-times fa-lg"></i>
                 </button>
@@ -225,7 +225,7 @@
         const cancelButton = document.getElementById('cancel-button');
         const taskParamsForm = document.getElementById('task-parameters-form');
         
-        // DOM ELEMENTS for .env modal
+        // DOM ELEMENTS for Secrets modal
         const envButton = document.getElementById('env-button');
         const envModal = document.getElementById('env-modal');
         const envModalBackdrop = document.getElementById('env-modal-backdrop');
@@ -550,7 +550,7 @@
             renderTaskGrid(searchTerm === '' ? commands : filteredCommands);
         }
 
-        // .env Modal Functions
+        // Secrets Modal Functions
         async function openEnvModal() {
             if (isExecuting) return;
 
@@ -559,7 +559,7 @@
                 saveEnvButton.innerHTML = `<i class="fas fa-spinner fa-spin"></i><span>Loading...</span>`;
 
                 const response = await fetch('/api/env');
-                if (!response.ok) throw new Error(`Failed to fetch .env content: ${response.status}`);
+                if (!response.ok) throw new Error(`Failed to fetch secrets: ${response.status}`);
                 
                 envTextarea.value = await response.text();
 
@@ -570,7 +570,7 @@
                 }, 10);
             } catch (error) {
                 console.error(error);
-                envTextarea.value = `# Error loading .env file.\n# ${error.message}`;
+                envTextarea.value = `# Error loading secrets file.\n# ${error.message}`;
             } finally {
                 saveEnvButton.disabled = false;
                 saveEnvButton.innerHTML = `Accept`;
@@ -597,7 +597,7 @@
                 });
 
                 if (!response.ok) {
-                    throw new Error(`Failed to save .env: ${await response.text()}`);
+                    throw new Error(`Failed to save secrets: ${await response.text()}`);
                 }
                 
                 saveEnvButton.classList.remove('bg-green');
