@@ -18,6 +18,8 @@ RUN mkdir testingground && cd testingground && \
     echo $a && \
     wget "$a" -O danzo.zip && \
     unzip danzo.zip && mv danzo /usr/bin/danzo && rm *
+RUN ls /usr/bin/
+RUN which danzo
 RUN cd testingground && \
     /usr/bin/danzo ghrelease tanq16/raikiri && \
     mv raikiri-* raikiri && chmod +x raikiri && \
