@@ -19,8 +19,10 @@ RUN mkdir testingground && cd testingground && \
     wget "$a" -O danzo.zip && \
     unzip danzo.zip && mv danzo /usr/bin/danzo && rm * && chmod +x /usr/bin/danzo
 RUN ls -la /usr/bin/danzo
+RUN /usr/bin/danzo -v
 RUN cd testingground && \
-    /usr/bin/danzo ghrelease tanq16/raikiri && \
+    /usr/bin/danzo ghrelease tanq16/raikiri
+RUN cd testingground && \
     mv raikiri-* raikiri && chmod +x raikiri && \
     mv raikiri /usr/bin/raikiri && \
     /usr/bin/danzo ghrelease tanq16/ai-context && \
