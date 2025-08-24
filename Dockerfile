@@ -17,20 +17,17 @@ RUN mkdir testingground && cd testingground && \
     a=$(curl -sL https://api.github.com/repos/tanq16/danzo/releases/latest | grep -E "browser_download_url.*" | grep linux-amd64 | cut -d '"' -f4) && \
     echo $a && \
     wget "$a" -O danzo.zip && \
-    unzip danzo.zip && mv danzo /usr/bin/danzo && rm * && chmod +x /usr/bin/danzo
-RUN ls -la /usr/bin/danzo
-RUN /usr/bin/danzo -v
+    unzip danzo.zip && mv danzo /usr/local/bin/danzo && rm * && chmod +x /usr/local/bin/danzo
 RUN cd testingground && \
-    /usr/bin/danzo ghrelease tanq16/raikiri
-RUN cd testingground && \
+    /usr/local/bin/danzo ghrelease tanq16/raikiri && \
     mv raikiri-* raikiri && chmod +x raikiri && \
-    mv raikiri /usr/bin/raikiri && \
-    /usr/bin/danzo ghrelease tanq16/ai-context && \
+    mv raikiri /usr/local/bin/raikiri && \
+    /usr/local/bin/danzo ghrelease tanq16/ai-context && \
     unzip *.zip && rm LICENSE README.md *.zip && \
-    mv ai-context /usr/bin/ai-context && \
-    /usr/bin/danzo ghrelease tanq16/anbu && \
+    mv ai-context /usr/local/bin/ai-context && \
+    /usr/local/bin/danzo ghrelease tanq16/anbu && \
     unzip *.zip && rm LICENSE README.md *.zip && \
-    mv anbu /usr/bin/anbu && \
+    mv anbu /usr/local/bin/anbu && \
     cd .. && rmdir testingground
 WORKDIR /app
 RUN mkdir -p /app/scripts
