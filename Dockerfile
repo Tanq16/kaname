@@ -14,7 +14,7 @@ RUN apt-get update && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 RUN mkdir testingground && cd testingground && \
-    a=$(curl -s https://api.github.com/repos/tanq16/danzo/releases/latest | grep -E "browser_download_url.*" | grep linux-amd64 | cut -d '"' -f4) && \
+    a=$(curl -sL https://api.github.com/repos/tanq16/danzo/releases/latest | grep -E "browser_download_url.*" | grep linux-amd64 | cut -d '"' -f4) && \
     wget "$a" -O danzo.zip && \
     unzip danzo.zip && mv danzo /usr/bin/danzo && rm * && \
     /usr/bin/danzo ghrelease tanq16/raikiri && \
