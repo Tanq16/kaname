@@ -10,7 +10,7 @@ FROM ubuntu:jammy
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && \
     apt-get install --no-install-recommends -y python3 python3-venv python3-requests python3-yaml \
-    ca-certificates zip git ffmpeg curl wget && \
+    ca-certificates zip unzip git ffmpeg curl wget && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 RUN mkdir testingground && cd testingground && \
