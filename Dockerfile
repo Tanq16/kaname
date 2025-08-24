@@ -17,9 +17,8 @@ RUN mkdir testingground && cd testingground && \
     a=$(curl -sL https://api.github.com/repos/tanq16/danzo/releases/latest | grep -E "browser_download_url.*" | grep linux-amd64 | cut -d '"' -f4) && \
     echo $a && \
     wget "$a" -O danzo.zip && \
-    unzip danzo.zip && mv danzo /usr/bin/danzo && rm *
-RUN ls /usr/bin/
-RUN which danzo
+    unzip danzo.zip && mv danzo /usr/bin/danzo && rm * && chmod +x /usr/bin/danzo
+RUN ls -la /usr/bin/danzo
 RUN cd testingground && \
     /usr/bin/danzo ghrelease tanq16/raikiri && \
     mv raikiri-* raikiri && chmod +x raikiri && \
