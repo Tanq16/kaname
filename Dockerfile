@@ -16,16 +16,16 @@ RUN apt-get update && \
 RUN mkdir testingground && cd testingground && \
     a=$(curl -s https://api.github.com/repos/tanq16/danzo/releases/latest | grep -E "browser_download_url.*" | grep linux-amd64 | cut -d '"' -f4) && \
     wget "$a" -O danzo.zip && \
-    unzip danzo.zip && mv danzo /usr/local/bin/danzo && rm * && \
-    danzo ghrelease tanq16/raikiri && \
+    unzip danzo.zip && mv danzo /usr/bin/danzo && rm * && \
+    /usr/bin/danzo ghrelease tanq16/raikiri && \
     mv raikiri-* raikiri && chmod +x raikiri && \
-    mv raikiri /usr/local/bin/raikiri && \
-    danzo ghrelease tanq16/ai-context && \
+    mv raikiri /usr/bin/raikiri && \
+    /usr/bin/danzo ghrelease tanq16/ai-context && \
     unzip *.zip && rm LICENSE README.md *.zip && \
-    mv ai-context /usr/local/bin/ai-context && \
-    danzo ghrelease tanq16/anbu && \
+    mv ai-context /usr/bin/ai-context && \
+    /usr/bin/danzo ghrelease tanq16/anbu && \
     unzip *.zip && rm LICENSE README.md *.zip && \
-    mv anbu /usr/local/bin/anbu && \
+    mv anbu /usr/bin/anbu && \
     cd .. && rmdir testingground
 WORKDIR /app
 RUN mkdir -p /app/scripts
