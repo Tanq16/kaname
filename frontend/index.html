@@ -65,7 +65,7 @@
         <!-- Top Bar -->
         <header class="flex items-center justify-between h-16 sm:h-20 px-4 sm:px-8 flex-shrink-0 border-b border-mantle gap-4">
             <div class="hidden sm:flex items-center gap-3 flex-shrink-0">
-                <img src="/logo.png" alt="Kaname Logo" class="h-16 w-16 rounded-full" onerror="this.style.display='none'">
+                <img id="kaname-logo" src="/logo.png" alt="Kaname Logo" class="h-16 w-16 rounded-full transition-all" style="cursor: pointer;" onerror="this.style.display='none'">
                 <h1 class="text-2xl font-bold text-mauve">Kaname</h1>
             </div>
             
@@ -207,6 +207,7 @@
         let selectedTaskId = null;
         let isExecuting = false;
         let isRefreshing = false;
+        let showHiddenCommands = false;
 
         // DOM ELEMENTS
         const taskGrid = document.getElementById('task-grid');
@@ -224,6 +225,7 @@
         const runButton = document.getElementById('run-button');
         const cancelButton = document.getElementById('cancel-button');
         const taskParamsForm = document.getElementById('task-parameters-form');
+        const logo = document.getElementById('kaname-logo');
         
         // DOM ELEMENTS for Secrets modal
         const envButton = document.getElementById('env-button');
@@ -243,7 +245,7 @@
                 const response = await fetch('/api/commands');
                 if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
                 commands = await response.json();
-                renderTaskGrid(commands);
+                handleSearch(); // Use handleSearch to perform the initial render
             } catch (error) {
                 console.error("Failed to fetch commands:", error);
                 taskGrid.innerHTML = `<div class="col-span-full text-center py-16"><p class="text-xl text-red">Error loading tasks. Is the backend running?</p></div>`;
@@ -257,15 +259,18 @@
                 return;
             }
             noResults.classList.add('hidden');
-            taskGrid.innerHTML = commandsToRender.map(cmd => `
-                <div id="card-${cmd.id}" onclick="openTaskModal('${cmd.id}')" class="bg-base rounded-xl p-4 sm:p-6 cursor-pointer hover:bg-surface0 transition-all duration-200">
+            taskGrid.innerHTML = commandsToRender.map(cmd => {
+                const hiddenIcon = cmd.hidden ? `<div class="absolute top-2 right-2 text-subtext0" title="Hidden Command"><i class="fas fa-eye-slash"></i></div>` : '';
+                return `
+                <div id="card-${cmd.id}" onclick="openTaskModal('${cmd.id}')" class="relative bg-base rounded-xl p-4 sm:p-6 cursor-pointer hover:bg-surface0 transition-all duration-200">
+                    ${hiddenIcon}
                     <div class="flex items-start justify-between">
-                        <h3 class="font-semibold text-text text-lg mb-2">${cmd.name}</h3>
+                        <h3 class="font-semibold text-text text-lg mb-2 pr-8">${cmd.name}</h3>
                         <i class="fas ${cmd.icon || 'fa-cog'} text-subtext0 text-2xl"></i>
                     </div>
                     <p class="text-subtext0 text-sm h-10 overflow-hidden">${cmd.description}</p>
                 </div>
-            `).join('');
+            `}).join('');
         }
 
         function openTaskModal(taskId) {
@@ -543,11 +548,24 @@
 
         function handleSearch() {
             const searchTerm = searchBar.value.toLowerCase().trim();
-            const filteredCommands = commands.filter(cmd =>
-                cmd.name.toLowerCase().includes(searchTerm) ||
-                cmd.description.toLowerCase().includes(searchTerm)
-            );
-            renderTaskGrid(searchTerm === '' ? commands : filteredCommands);
+            const baseCommands = showHiddenCommands ? commands : commands.filter(cmd => !cmd.hidden);
+            const filteredCommands = searchTerm === ''
+                ? baseCommands
+                : baseCommands.filter(cmd =>
+                    cmd.name.toLowerCase().includes(searchTerm) ||
+                    cmd.description.toLowerCase().includes(searchTerm)
+                );
+            renderTaskGrid(filteredCommands);
+        }
+
+        function toggleHiddenCommands() {
+            showHiddenCommands = !showHiddenCommands;
+            if (showHiddenCommands) {
+                logo.classList.add('ring-2', 'ring-mauve');
+            } else {
+                logo.classList.remove('ring-2', 'ring-mauve');
+            }
+            handleSearch(); // Re-filter and re-render the grid
         }
 
         // Secrets Modal Functions
@@ -642,6 +660,7 @@
             cancelEnvButton.addEventListener('click', closeEnvModal);
             saveEnvButton.addEventListener('click', handleSaveEnv);
             refreshButton.addEventListener('click', handleRefresh);
+            logo.addEventListener('click', toggleHiddenCommands);
 
             window.addEventListener('keydown', (e) => {
                 if (e.key === 'Escape') {

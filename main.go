@@ -39,6 +39,7 @@ type CommandDefinition struct {
 	ScriptType  string         `json:"script_type"`
 	Parameters  []CommandParam `json:"parameters"`
 	Icon        string         `json:"icon"`
+	Hidden      bool           `json:"hidden,omitempty"`
 }
 
 // ExecutionRequest is the structure for a request to run a command.
