@@ -240,6 +240,14 @@
 
         // FUNCTIONS
 
+        function stripAnsiCodes(str) {
+            // removes escape sequences used for color and text formatting
+            return str.replace(
+                /[\u001b\u009b][[()#;?]*.{0,2}(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g,
+                ''
+            );
+        }
+
         async function fetchAndRenderCommands() {
             try {
                 const response = await fetch('/api/commands');
@@ -443,7 +451,7 @@
                             const msg = JSON.parse(line);
                             const logElement = document.createElement('span');
                             logElement.style.display = 'block';
-                            logElement.textContent = msg.data;
+                            logElement.textContent = stripAnsiCodes(msg.data);
                             let targetLog, parentElement;
 
                             if (msg.stream === 'stdout') {
